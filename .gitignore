@@ -1,2 +1,6 @@
 *.egg-info
 *.py[cod]
+/results
+/data
+/wandb
+__pycache__

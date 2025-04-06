@@ -1,0 +1,22 @@
+[project]
+name = "segfm3d-nora-team"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "connected-components-3d>=3.23.0",
+    "pandas>=2.2.3",
+    "scipy>=1.15.2",
+    "surface-distance",
+    "tqdm>=4.67.1",
+    "wandb>=0.19.9",
+]
+
+[tool.uv.sources]
+surface-distance = { git = "https://github.com/deepmind/surface-distance.git" }
+
+[tool.uv]
+cache-dir = "../cache"
+# The cache directory is used to store the downloaded packages and their dependencies
+# avoid having the cache in the home directory, 
