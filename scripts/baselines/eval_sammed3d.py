@@ -24,7 +24,7 @@ if __name__ == "__main__":
                                checkpoint_path=ckpt_path)
 
     ''' 2. read and pre-process your input data '''
-    npz_file = glob(os.path.join(config["VAL_DIR"],"*.npz"))[0]
+    npz_file = glob(os.path.join(config["VAL_DIR"],"3D_val_npz","*.npz"))[0]
     out_dir = os.path.join(config["RESULTS_DIR"], "sammed3d")
     imgs, spacing, all_clicks, prev_pred = read_data_from_npz(npz_file)
     final_pred = np.zeros_like(imgs, dtype=np.uint8)

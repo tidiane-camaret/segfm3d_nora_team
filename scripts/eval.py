@@ -1,3 +1,10 @@
+"""
+Main evaluation script,
+Adapted from https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py
+to run locally without docker
+TODO : Make sure that the metrics are in line with the competition
+"""
+
 import argparse
 import os
 import shutil
@@ -9,6 +16,7 @@ import numpy as np
 import pandas as pd
 import wandb  # Import Wandb
 import yaml
+from baselines.sammed3d_class import SAMMed3DPredictor
 from scipy import integrate
 
 # --- Competition Metric Functions (Copied from evaluation script) ---
@@ -33,6 +41,8 @@ except Exception as e:
     GPU_AVAILABLE = False
     print(f"GPU not available or CuPy/cuCIM error ({e}). Using SciPy for EDT.")
 
+config = yaml.safe_load(open("config.yaml"))
+predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
 
 # Function to compute multi-class DSC
 def compute_multi_class_dsc(gt, seg):
@@ -400,7 +410,7 @@ def evaluate(
                     print(f"Input: Clicks - {clicks_input}")
 
                 # Run model inference
-                current_segmentation, infer_time = run_model_inference(
+                current_segmentation, infer_time = predictor.predict(
                     image_data=image,
                     spacing_data=spacing,
                     bbox_data=bbox_input,
@@ -596,18 +606,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-n",
-        "--num_clicks",
-        default=5,
-        type=int,
-        help="Number of click refinement iterations",
-    )
-    parser.add_argument(
-        "-nc",
         "--num_cases",
         default=10,
         type=int,
         help="Number of cases to evaluate",
     )
+    parser.add_argument(
+        "-c",
+        "--num_clicks",
+        default=5,
+        type=int,
+        help="Number of click refinement iterations",
+    )
+
     parser.add_argument(
         "--wandb_project",
         default="segfm3d_nora_team",
@@ -621,7 +632,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    config = yaml.safe_load(open("config.yaml"))
+    
     args.val_imgs_path = os.path.join(config["VAL_DIR"], "3D_val_npz")
     args.validation_gts_path = os.path.join(
         config["VAL_DIR"], "3D_val_gt_interactive_seg"

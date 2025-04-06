@@ -6,9 +6,15 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "connected-components-3d>=3.23.0",
+    "edt>=3.0.0",
+    "matplotlib>=3.10.1",
+    "monai>=1.4.0",
+    "opencv-python-headless>=4.11.0.86",
     "pandas>=2.2.3",
+    "prefetch-generator>=1.0.3",
     "scipy>=1.15.2",
     "surface-distance",
+    "torchio>=0.20.6",
     "tqdm>=4.67.1",
     "wandb>=0.19.9",
 ]
