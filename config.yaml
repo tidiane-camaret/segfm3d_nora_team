@@ -1,6 +1,6 @@
 # Nora 
 
-VAL_DIR: "/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_incontext/SegFM3D/3D_train_npz_random_10percent_16G/CT/CT_Abdomen1K"
+VAL_DIR: "/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_incontext/SegFM3D/data"
 RESULTS_DIR: "/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_incontext/SegFM3D/results"
 
 SAM_CKPT_PATH: "/nfs/norasys/notebooks/camaret/SAM-Med3D/ckpt/sam_med3d_turbo_bbox_cvpr.pth"
@@ -8,8 +8,8 @@ SAM_REPO_DIR: "/nfs/norasys/notebooks/camaret/SAM-Med3D"
 
 # Meta 
 
-VAL_DIR: "/work/dlclarge2/ndirt-SegFM3D/data"
-RESULTS_DIR: "/work/dlclarge2/ndirt-SegFM3D/segfm3d_nora_team/results"
+# VAL_DIR: "/work/dlclarge2/ndirt-SegFM3D/data"
+# RESULTS_DIR: "/work/dlclarge2/ndirt-SegFM3D/segfm3d_nora_team/results"
 
-SAM_CKPT_PATH: "/work/dlclarge2/ndirt-SegFM3D/repos/SAM-Med3D/ckpt/sam_med3d_turbo_bbox_cvpr.pth"
-SAM_REPO_DIR: "/work/dlclarge2/ndirt-SegFM3D/repos/SAM-Med3D"
+# SAM_CKPT_PATH: "/work/dlclarge2/ndirt-SegFM3D/repos/SAM-Med3D/ckpt/sam_med3d_turbo_bbox_cvpr.pth"
+# SAM_REPO_DIR: "/work/dlclarge2/ndirt-SegFM3D/repos/SAM-Med3D"
