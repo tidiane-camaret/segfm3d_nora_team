@@ -1,20 +1,5 @@
-import numpy as np
-img = np.load("/work/dlclarge2/ndirt-SegFM3D/data/3D_val_npz/CT_AMOS_amos_0018.npz", allow_pickle=True)
-print(list(img.keys()))
-print(img['imgs'].shape) # 3d volume
-print(img['boxes']) # list of bbox coordinates, one per class
-print(img['spacing'])
-# print(img['text_prompts']) # dictionary of text propmts, one per class
 
-gt = np.load("/work/dlclarge2/ndirt-SegFM3D/data/3D_val_gt_interactive_seg/CT_AMOS_amos_0018.npz", allow_pickle=True)
-print(list(gt.keys())) # ['gts', 'boxes', 'spacing']
-
-pred = np.load("/work/dlclarge2/ndirt-SegFM3D/segfm3d_nora_team/results/CT_AMOS_amos_0018_pred.npz", allow_pickle=True)
-print(list(pred.keys())) # ['segs', 'all_segs']
-print(pred["segs"].shape)
-print(pred["all_segs"].shape)
-# visualize_slices_grid.py
-
+from operator import gt
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
@@ -193,14 +178,45 @@ if __name__ == "__main__":
                         help="Custom title for the figure.")
 
 
+    import yaml
+    config = yaml.safe_load(open("config.yaml"))
+    print(os.listdir(config["RESULTS_DIR"]+"/sammed3d/"))
+    
+    file_name = os.listdir(config["RESULTS_DIR"]+"/sammed3d/")[0]
+    file_name = os.path.splitext(file_name)[0]
+    # remove the _pred at the end of the file
+    file_name = file_name.replace("_pred", "")
+    print(file_name)
+    img_path = config["VAL_DIR"] + "/3D_val_npz/" + file_name + ".npz"
+    img = np.load(img_path, allow_pickle=True)
+    print(list(img.keys()))
+    print(img['imgs'].shape) # 3d volume
+    print(img['boxes']) # list of bbox coordinates, one per class
+    print(img['spacing'])
+    # print(img['text_prompts']) # dictionary of text propmts, one per class
+    
+    gt_path = config["VAL_DIR"] + "/3D_val_gt_interactive_seg/" + file_name + ".npz"
+    gt = np.load(gt_path, allow_pickle=True)
+    print(list(gt.keys())) # ['gts', 'boxes', 'spacing']
+    print(gt['gts'].shape) # 3d volume
+    print(gt['boxes']) # list of bbox coordinates, one per class
+    print(gt['spacing']) # spacing of the image
+
+    pred_path = config["RESULTS_DIR"] + "/sammed3d/" + file_name + "_pred.npz"
+    pred = np.load(pred_path, allow_pickle=True)
+    print(list(pred.keys())) # ['segs', 'all_segs']
+    print(pred['segs'].shape) # 3d volume
+    print(pred['all_segs'].shape) # 3d volumes
+
     args = parser.parse_args()
-    for file_name in os.listdir("results"):
+    for file_name in os.listdir(config["RESULTS_DIR"]+"/sammed3d/"):
         file_name = os.path.splitext(file_name)[0]
         # remove the _pred at the end of the file
         file_name = file_name.replace("_pred", "")
 
-        args.image_path = "/work/dlclarge2/ndirt-SegFM3D/data/3D_val_npz/" + file_name + ".npz"
-        args.gt_path = "/work/dlclarge2/ndirt-SegFM3D/data/3D_val_gt_interactive_seg/" + file_name + ".npz"
-        args.pred_path = "/work/dlclarge2/ndirt-SegFM3D/segfm3d_nora_team/results/" + file_name + "_pred.npz"
+        args.image_path = config["VAL_DIR"] + "/3D_val_npz/" + file_name + ".npz"
+        args.gt_path = config["VAL_DIR"] + "/3D_val_gt_interactive_seg/" + file_name + ".npz"
+        args.pred_path = config["RESULTS_DIR"] + "/sammed3d/" + file_name + "_pred.npz"
+        args.output_dir = config["RESULTS_DIR"] + "/viz/"
 
         visualize_slices_grid(args.image_path, args.gt_path, args.pred_path, args.n_slices, args.axis, args.output_dir, args.title)

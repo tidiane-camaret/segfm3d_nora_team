@@ -25,7 +25,7 @@ from src.eval_tools import (
     compute_multi_class_nsd,
     generate_clicks,
 )
-from segfm3d_nora_team.src.sammed3d import SAMMed3DPredictor
+from src.sammed3d import SAMMed3DPredictor
 from surface_distance import (
     compute_dice_coefficient,
     compute_surface_dice_at_tolerance,
@@ -34,6 +34,18 @@ from surface_distance import (
 from tqdm import tqdm
 
 
+# Optional: Check for GPU and import CuPy/cuCIM if available
+try:
+    import cupy as cp
+    from cucim.core.operations import morphology
+
+    # Check if GPU is actually available
+    cp.cuda.Device(0).use()
+    GPU_AVAILABLE = True
+    print("GPU detected. Using CuPy/cuCIM for EDT.")
+except Exception as e:
+    GPU_AVAILABLE = False
+    print(f"GPU not available or CuPy/cuCIM error ({e}). Using SciPy for EDT.")
 
 config = yaml.safe_load(open("config.yaml"))
 predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
@@ -363,6 +375,7 @@ if __name__ == "__main__":
     args.validation_gts_path = os.path.join(
         config["VAL_DIR"], "3D_val_gt_interactive_seg"
     )
+    args.save_path = os.path.join(config["RESULTS_DIR"], "sammed3d")
 
     evaluate(
         img_dir=args.val_imgs_path,
