@@ -1,10 +1,12 @@
 
 
 import matplotlib.pyplot as plt
-import numpy as np
 import os 
+import numpy as np
+from math import ceil, sqrt
 
 def plot_middle_slice(volume_data, title="Middle Slice", slice_dim=0, cmap='gray', save_dir="debug_plots"):    
+    print("saucdde")
     """
     Plots the middle slice of a 3D NumPy array using Matplotlib.
 
@@ -15,6 +17,8 @@ def plot_middle_slice(volume_data, title="Middle Slice", slice_dim=0, cmap='gray
         slice_dim (int): The dimension along which to take the middle slice (0 for Z, 1 for Y, 2 for X).
         cmap (str): The colormap to use for imshow.
     """
+    import numpy as np
+
 
     # Ensure save directory exists
     os.makedirs(save_dir, exist_ok=True) # Create dir if needed
@@ -38,15 +42,16 @@ def plot_middle_slice(volume_data, title="Middle Slice", slice_dim=0, cmap='gray
     safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '_')).rstrip()
     safe_title = safe_title.replace(' ', '_')
     save_path = os.path.join(save_dir, f"{safe_title}_slice_{slice_dim}_{middle_slice_idx}.png")
+    """
     try:
-        fig.savefig(save_path)
+       fig.savefig(save_path)
         print(f"Saved plot to: {save_path}")
     except Exception as e:
         print(f"Error saving plot {save_path}: {e}")
     plt.close(fig) # Close the figure to free memory, important in loops!
-    # plt.show() # Remove or comment out plt.show()
+    """
+    plt.show() # Remove or comment out plt.show()
 
-    import numpy as np
 
 def center_of_mass(array):
     """
@@ -79,3 +84,86 @@ def center_of_mass(array):
     x_center = np.sum(x_coords[np.newaxis, np.newaxis, :] * array) / total_mass
     
     return (z_center, y_center, x_center)
+
+def save_volume_viz(img_array, save_path=None, slice_indices=None, show=False):
+    """
+    Save volume slices to a single figure at the specified path.
+    
+    Parameters:
+    -----------
+    img_array : ndarray
+        3D array representing the volume data, expected shape (D, H, W) where D is depth
+    save_path : str or Path
+        Path where to save the visualization figure
+    slice_indices : None, int, list, or tuple, optional
+        - None: Uses the middle slice
+        - int: Uses the specified slice index
+        - list/tuple of ints: Uses the specified slices
+        - tuple of (int, 'uniform'): Uses evenly spaced slices across the volume
+    
+    Examples:
+    ---------
+    # Save middle slice
+    save_volume_viz(volume, "middle_slice.png")
+    
+    # Save specific slice
+    save_volume_viz(volume, "slice_10.png", 10)
+    
+    # Save multiple specific slices in one figure
+    save_volume_viz(volume, "multiple_slices.png", [10, 20, 30])
+    
+    # Save 5 uniformly distributed slices in one figure
+    save_volume_viz(volume, "uniform_slices.png", (5, 'uniform'))
+    """
+
+    depth = img_array.shape[0]
+    
+    # Determine which slices to save
+    if slice_indices is None:
+        slices = [depth // 2]  # Middle slice
+    elif isinstance(slice_indices, int):
+        slices = [slice_indices]
+    elif isinstance(slice_indices, (list, tuple)):
+        if len(slice_indices) == 2 and slice_indices[1] == 'uniform':
+            # Uniform spacing
+            num = slice_indices[0]
+            slices = np.linspace(0, depth-1, num, dtype=int).tolist() if num > 1 else [depth // 2]
+        else:
+            # List of indices
+            slices = slice_indices
+    
+    # Filter out any out-of-bounds indices
+    slices = [idx for idx in slices if 0 <= idx < depth]
+    
+    # Create a single figure with subplots
+    n = len(slices)
+    if n == 1:
+        plt.figure(figsize=(10, 8))
+        plt.imshow(img_array[slices[0]], cmap='gray')
+        plt.axis('off')
+    else:
+        # Determine grid size
+        cols = min(4, ceil(sqrt(n)))
+        rows = ceil(n / cols)
+        fig, axes = plt.subplots(rows, cols, figsize=(cols*4, rows*4))
+        axes = axes.flatten() if n > 1 else [axes]
+        
+        # Plot each slice
+        for i, idx in enumerate(slices):
+            if i < len(axes):
+                axes[i].imshow(img_array[idx], cmap='gray')
+                axes[i].set_title(f"Slice {idx}")
+                axes[i].axis('off')
+        
+        # Hide unused subplots
+        for i in range(n, len(axes)):
+            axes[i].axis('off')
+            
+        plt.tight_layout()
+    if show:
+        plt.show()
+    # Save the figure
+    else:
+        plt.savefig(save_path)
+    plt.close()
+

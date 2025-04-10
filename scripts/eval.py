@@ -115,8 +115,8 @@ def evaluate(
             gts = gt_data["gts"]
             print(image.shape)
             initial_bbox = data.get("boxes", None)  # Use .get for optional keys
-            plot_middle_slice(image, title=f"{case_name} - ori img", cmap='viridis') # Use a color map for labels
-            plot_middle_slice(gts==1, title=f"{case_name} - GT", cmap='viridis') # Use a color map for labels
+            # plot_middle_slice(image, title=f"{case_name} - ori img", cmap='viridis') # Use a color map for labels
+            # plot_middle_slice(gts==1, title=f"{case_name} - GT", cmap='viridis') # Use a color map for labels
             # calculate center of mass of gts
             print(f"GT center of mass for {case_name}:")
             print(f"Center of mass coordinates (z, y, x): {center_of_mass(gts==1)}")
@@ -130,7 +130,7 @@ def evaluate(
                     bbox['z_mid_x_min'] : bbox['z_mid_x_max'],
                 ] = 1
 
-                plot_middle_slice(img_bbox_1, title=f"{case_name} - BBox", cmap='viridis') # Use a color map for labels
+                # plot_middle_slice(img_bbox_1, title=f"{case_name} - BBox", cmap='viridis') # Use a color map for labels
             num_classes = len(np.unique(gts)[1:])  # Number of foreground classes
             if num_classes == 0:
                 print(

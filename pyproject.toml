@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "connected-components-3d>=3.23.0",
     "edt>=3.0.0",
+    "ipykernel>=6.29.5",
     "matplotlib>=3.10.1",
     "monai>=1.4.0",
     "napari[all]>=0.5.6",
