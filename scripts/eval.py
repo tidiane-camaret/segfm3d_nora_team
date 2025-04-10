@@ -25,6 +25,8 @@ from src.eval_tools import (
     compute_multi_class_nsd,
     generate_clicks,
 )
+from src.viz_tools import plot_middle_slice, center_of_mass
+
 from src.sammed3d import SAMMed3DPredictor
 from surface_distance import (
     compute_dice_coefficient,
@@ -58,6 +60,7 @@ def evaluate(
     output_dir,
     num_clicks=5,
     num_cases=10,
+    num_classes_max=None,
     use_wandb=True,
     wandb_project="segfm3d_nora_team",
     verbose=False,
@@ -104,14 +107,30 @@ def evaluate(
 
         try:
             # Load data
-            data = np.load(input_filepath)
+            data = np.load(input_filepath, allow_pickle=True)
             gt_data = np.load(gt_filepath)
 
             image = data["imgs"]
             spacing = data["spacing"]
             gts = gt_data["gts"]
-            initial_bbox = data.get("bbox", None)  # Use .get for optional keys
+            print(image.shape)
+            initial_bbox = data.get("boxes", None)  # Use .get for optional keys
+            plot_middle_slice(image, title=f"{case_name} - ori img", cmap='viridis') # Use a color map for labels
+            plot_middle_slice(gts==1, title=f"{case_name} - GT", cmap='viridis') # Use a color map for labels
+            # calculate center of mass of gts
+            print(f"GT center of mass for {case_name}:")
+            print(f"Center of mass coordinates (z, y, x): {center_of_mass(gts==1)}")
+            if initial_bbox is not None:
+                bbox = initial_bbox[0] # first class
+                print(f"Initial bounding box for {case_name}: {initial_bbox}")
+                img_bbox_1 = np.zeros_like(image)
+                img_bbox_1[
+                    bbox['z_min'] : bbox['z_max'],
+                    bbox['z_mid_y_min'] : bbox['z_mid_y_max'],
+                    bbox['z_mid_x_min'] : bbox['z_mid_x_max'],
+                ] = 1
 
+                plot_middle_slice(img_bbox_1, title=f"{case_name} - BBox", cmap='viridis') # Use a color map for labels
             num_classes = len(np.unique(gts)[1:])  # Number of foreground classes
             if num_classes == 0:
                 print(
@@ -142,9 +161,9 @@ def evaluate(
                     # Often, the first pred might be zero or based on image stats if no bbox
 
                 print(f"\n--- Case: {case_name}, Iteration: {it} ---")
-                if bbox_input:
+                if bbox_input is not None : 
                     print("Input: BBox")
-                if clicks_input:
+                if clicks_input is not None : 
                     print(f"Input: Clicks - {clicks_input}")
 
                 # Run model inference
@@ -154,6 +173,7 @@ def evaluate(
                     bbox_data=bbox_input,
                     clicks_data=clicks_input,
                     prev_pred_data=prev_prediction,  # Pass previous prediction
+                    num_classes_max=num_classes_max,
                 )
                 total_inference_time += infer_time
                 all_segs_for_case.append(
@@ -356,6 +376,13 @@ if __name__ == "__main__":
         type=int,
         help="Number of click refinement iterations",
     )
+    parser.add_argument(
+        "-m",
+        "--num_classes_max",
+        default=None,
+        type=int,
+        help="Maximum number of classes to predict (None for all)",
+    )
 
     parser.add_argument(
         "--wandb_project",
@@ -383,6 +410,7 @@ if __name__ == "__main__":
         output_dir=args.save_path,
         num_clicks=args.num_clicks,
         num_cases=args.num_cases,
+        num_classes_max=args.num_classes_max,
         use_wandb=not args.no_wandb,
         wandb_project=args.wandb_project,
         verbose=args.verbose,

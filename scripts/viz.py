@@ -176,6 +176,8 @@ if __name__ == "__main__":
                         help="Directory to save the plot image (default: display plot).")
     parser.add_argument("-t", "--title", type=str, default=None,
                         help="Custom title for the figure.")
+    parser.add_argument("-nc", "--nb_cases", type=int, default=None, 
+                        help="Number of cases to visualize.")
 
 
     import yaml
@@ -209,7 +211,10 @@ if __name__ == "__main__":
     print(pred['all_segs'].shape) # 3d volumes
 
     args = parser.parse_args()
-    for file_name in os.listdir(config["RESULTS_DIR"]+"/sammed3d/"):
+
+    file_list = os.listdir(config["RESULTS_DIR"]+"/sammed3d/")
+    file_list = file_list[:args.nb_cases] if args.nb_cases is not None else file_list
+    for file_name in file_list:
         file_name = os.path.splitext(file_name)[0]
         # remove the _pred at the end of the file
         file_name = file_name.replace("_pred", "")

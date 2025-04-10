@@ -5,7 +5,7 @@ Interactive 3d segmentation challenge
 # Evaluation script 
 ## fast eval for debugging
 ```bash
-uv run python scripts/eval.py -c 1 -n 1
+uv run python scripts/eval.py -c 0 -n 1 -m 1 --no_wandb
 ```
 ## Baselines stats
 ### SAM-Med3D 

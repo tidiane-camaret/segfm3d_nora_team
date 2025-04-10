@@ -14,7 +14,6 @@ from scipy import integrate
 
 # --- Competition Metric Functions (Copied from evaluation script) ---
 from scipy.ndimage import distance_transform_edt
-from src.sammed3d import SAMMed3DPredictor
 from surface_distance import (
     compute_dice_coefficient,
     compute_surface_dice_at_tolerance,
