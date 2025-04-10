@@ -6,7 +6,6 @@ import numpy as np
 from math import ceil, sqrt
 
 def plot_middle_slice(volume_data, title="Middle Slice", slice_dim=0, cmap='gray', save_dir="debug_plots"):    
-    print("saucdde")
     """
     Plots the middle slice of a 3D NumPy array using Matplotlib.
 

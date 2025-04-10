@@ -115,22 +115,7 @@ def evaluate(
             gts = gt_data["gts"]
             print(image.shape)
             initial_bbox = data.get("boxes", None)  # Use .get for optional keys
-            # plot_middle_slice(image, title=f"{case_name} - ori img", cmap='viridis') # Use a color map for labels
-            # plot_middle_slice(gts==1, title=f"{case_name} - GT", cmap='viridis') # Use a color map for labels
-            # calculate center of mass of gts
-            print(f"GT center of mass for {case_name}:")
-            print(f"Center of mass coordinates (z, y, x): {center_of_mass(gts==1)}")
-            if initial_bbox is not None:
-                bbox = initial_bbox[0] # first class
-                print(f"Initial bounding box for {case_name}: {initial_bbox}")
-                img_bbox_1 = np.zeros_like(image)
-                img_bbox_1[
-                    bbox['z_min'] : bbox['z_max'],
-                    bbox['z_mid_y_min'] : bbox['z_mid_y_max'],
-                    bbox['z_mid_x_min'] : bbox['z_mid_x_max'],
-                ] = 1
 
-                # plot_middle_slice(img_bbox_1, title=f"{case_name} - BBox", cmap='viridis') # Use a color map for labels
             num_classes = len(np.unique(gts)[1:])  # Number of foreground classes
             if num_classes == 0:
                 print(
@@ -168,11 +153,11 @@ def evaluate(
 
                 # Run model inference
                 current_segmentation, infer_time = predictor.predict(
-                    image_data=image,
-                    spacing_data=spacing,
-                    bbox_data=bbox_input,
-                    clicks_data=clicks_input,
-                    prev_pred_data=prev_prediction,  # Pass previous prediction
+                    image=image,
+                    spacing=spacing,
+                    bboxs=bbox_input,
+                    clicks=clicks_input,
+                    prev_pred=prev_prediction,  # Pass previous prediction
                     num_classes_max=num_classes_max,
                 )
                 total_inference_time += infer_time
@@ -296,7 +281,21 @@ def evaluate(
             print(f"Case Summary: {case_summary}")
 
             # Log case summary metrics to WandB (prefix with Case/)
+            # TODO : log at every refinement step to see progress
+            # TODO : Log the 3d seg ?
             if use_wandb:
+                # get middle slice 
+                wandb_img = image[
+                    image.shape[0] // 2, :, :
+                ]
+                wandb_pred = current_segmentation[
+                    current_segmentation.shape[0] // 2, :, :
+                ]
+                wandb_gt = gts[gts.shape[0] // 2, :, :]
+
+
+                # Save the middle slice image
+
                 wandb.log(
                     {
                         "Case/DSC_AUC": dsc_auc,
@@ -306,6 +305,19 @@ def evaluate(
                         "Case/TotalRunningTime": total_inference_time,
                         "Case/AvgRunningTime": case_summary["AvgRunningTime"],
                         "case_name": case_name,  # Log case name for grouping
+                        "Segmentation": wandb.Image(
+                            wandb_img,
+                            masks={
+                                "predictions": {
+                                    "mask_data": wandb_pred,
+                                    # "class_labels": {0: "Background", 1: "Foreground"},
+                                },
+                                "ground_truth": {
+                                    "mask_data": wandb_gt,
+                                    # "class_labels": {0: "Background", 1: "Foreground"},
+                                },
+                            },
+                        ),
                     }
                 )
 

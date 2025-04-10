@@ -1,65 +1,74 @@
-# sam_med3d_predictor_with_helpers_debug.py
+# predictor class based on SAM-Med3D
 
-import numpy as np
-import time
+import os  # For saving debug files
 import sys
-import torch # Needed by sam_model_infer
-import os # For saving debug files
+import time
 
-from src.viz_tools import plot_middle_slice
-# --- Import the provided helper functions ---
-# Assume these functions are in the current directory or accessible via PYTHONPATH
+from click import prompt
+import numpy as np
+from sympy import im
+import torch
+import torch.nn.functional as F
+from onnx import save
+from src.viz_tools import save_volume_viz
+
 try:
-    import medim # For loading the model
+    import medim  # model loading
     import yaml
-    # Assuming config.yaml is in the same directory or parent directory
-    config_path = "config.yaml"
-    if not os.path.exists(config_path):
-         # Try parent directory if not found in current
-         config_path = os.path.join("..", "config.yaml")
-    if os.path.exists(config_path):
-         config = yaml.safe_load(open(config_path))
-         if "SAM_REPO_DIR" in config and config["SAM_REPO_DIR"] not in sys.path:
-              sys.path.append(config["SAM_REPO_DIR"])
-         else:
-             print("Warning: SAM_REPO_DIR not found in config or already in sys.path.")
-    else:
-         print("Warning: config.yaml not found. Ensure SAM_REPO_DIR is manually added to PYTHONPATH if needed.")
 
-    from medim_infer import ( # Assuming helpers are in this file relative to SAM_REPO_DIR
-        create_gt_arr,
+    config_path = "config.yaml"
+    if os.path.exists(config_path):
+        config = yaml.safe_load(open(config_path))
+        if "SAM_REPO_DIR" in config and config["SAM_REPO_DIR"] not in sys.path:
+            sys.path.append(config["SAM_REPO_DIR"])
+        else:
+            print("Warning: SAM_REPO_DIR not found in config or already in sys.path.")
+    else:
+        print(
+            "Warning: config.yaml not found. Ensure SAM_REPO_DIR is manually added to PYTHONPATH if needed."
+        )
+
+    from medim_infer import (  # processing helpers
+        data_postprocess,
         data_preprocess,
-        sam_model_infer,
-        data_postprocess
-        # random_sample_next_click # May not be needed directly if sam_model_infer uses roi_gt
+        random_sample_next_click,
+        create_gt_arr,
     )
+
     SAM_AVAILABLE = True
 except ImportError as e:
     print(f"ERROR: Could not import 'medim' or helper functions: {e}")
-    print("Ensure 'medim' is installed and the SAM-Med3D repo (containing medim_infer.py) is accessible via PYTHONPATH.")
+    print(
+        "Ensure 'medim' is installed and the SAM-Med3D repo (containing medim_infer.py) is accessible via PYTHONPATH."
+    )
     SAM_AVAILABLE = False
 except FileNotFoundError:
-    print("Warning: config.yaml specified but not found. Ensure SAM_REPO_DIR is manually added to PYTHONPATH if needed.")
-    SAM_AVAILABLE = False # Assume failure if config is needed for path but not found
+    print(
+        "Warning: config.yaml specified but not found. Ensure SAM_REPO_DIR is manually added to PYTHONPATH if needed."
+    )
+    SAM_AVAILABLE = False  # Assume failure if config is needed for path but not found
 except KeyError:
-    print("Warning: SAM_REPO_DIR key not found in config.yaml. Ensure SAM_REPO_DIR is manually added to PYTHONPATH if needed.")
+    print(
+        "Warning: SAM_REPO_DIR key not found in config.yaml. Ensure SAM_REPO_DIR is manually added to PYTHONPATH if needed."
+    )
     # SAM_AVAILABLE might still be True if import succeeded without path append
 
 
 # --- Predictor Class ---
+
 
 class SAMMed3DPredictor:
     """
     Predictor class for SAM-Med3D using provided helper functions.
     Includes detailed debugging logs and intermediate file saving.
     """
-    def __init__(self, checkpoint_path, debug_save_dir="sam_debug_output"):
+
+    def __init__(self, checkpoint_path):
         """
-        Initializes the predictor, loads the model, and sets up debug directory.
+        Initializes the predictor, loads the model
 
         Args:
             checkpoint_path (str): Path to the model checkpoint.
-            debug_save_dir (str): Directory to save intermediate numpy arrays.
         """
         if not SAM_AVAILABLE:
             raise ImportError("SAM-Med3D components or helpers not found.")
@@ -68,251 +77,335 @@ class SAMMed3DPredictor:
         self.model = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"   Using device: {self.device}")
-        self.debug_save_dir = debug_save_dir
-        os.makedirs(self.debug_save_dir, exist_ok=True)
-        print(f"   Debug outputs will be saved to: {self.debug_save_dir}")
 
         try:
             # Use medim to load the model
             self.model = medim.create_model(
                 "SAM-Med3D",
-                # pretrained=True, # Check if needed based on checkpoint
-                checkpoint_path=checkpoint_path
+                pretrained=True, # Check if needed based on checkpoint
+                checkpoint_path=checkpoint_path,
             )
-            self.model.to(self.device) # Move model to device
-            self.model.eval()          # Set model to evaluation mode
+            self.model.to(self.device)  # Move model to device
+            self.model.eval()  # Set model to evaluation mode
             print("SAMMed3DPredictor: Model loaded and set to eval mode.")
         except Exception as e:
             print(f"ERROR loading SAM-Med3D model from {checkpoint_path}: {e}")
-            raise RuntimeError(f"Failed to load SAM-Med3D model from {checkpoint_path}") from e
+            raise RuntimeError(
+                f"Failed to load SAM-Med3D model from {checkpoint_path}"
+            ) from e
 
-    def predict(self,
-                image_data,        # Full 3D image (NumPy ZYX?)
-                spacing_data,      # Voxel spacing (tuple/list XYZ?)
-                bbox_data=None,    # BBox list (iter 0) [{'z_min':..,}, ...]
-                clicks_data=None,  # Click list (iter 1+) [{'fg':[[x,y,z],..], 'bg':[[x,y,z],..]}, ...]
-                prev_pred_data=None, # Full prediction from previous step (NumPy ZYX?)
-                iteration_step=-1, # Add iteration step for unique debug filenames
-                case_name="unknown_case", # Add case name for unique debug filenames
-                num_classes_max=None # Optional: limit number of classes processed
-               ):
+    def predict(
+        self,
+        image,  # Full 3D image (NumPy ZYX)
+        spacing,  # Voxel spacing (tuple/list XYZ)
+        bboxs=None,  # BBox list (iter 0) [{'z_min':..,}, ...]
+        clicks=None,  # Click list (iter 1+) [{'fg':[[x,y,z],..], 'bg':[[x,y,z],..]}, ...]
+        prev_pred=None,  # Full prediction from previous step (NumPy ZYX)
+        num_classes_max=None,  # Optional: limit number of classes processed
+    ):
         """
         Performs SAM-Med3D inference using the provided helper functions.
         Includes detailed debugging logs and saves intermediate arrays.
         """
         start_time = time.time()
         # Create a unique prefix for debug files for this specific call
-        base_debug_prefix = f"{case_name}_iter{iteration_step}"
-        print(f"\n--- SAMMed3DPredictor.predict() start (Debug Mode) | Case: {case_name}, Iter: {iteration_step} ---")
-
         if self.model is None:
-             print("   ERROR: Model is not loaded.")
-             return np.zeros_like(image_data, dtype=np.uint8), time.time() - start_time
+            print("   ERROR: Model is not loaded.")
+            return np.zeros_like(image, dtype=np.uint8), time.time() - start_time
 
-        # Initialize final prediction for THIS iteration step
-        final_segmentation = np.zeros_like(image_data, dtype=np.uint8)
+        # Initialize final prediction array
+        final_segmentation = np.zeros_like(image, dtype=np.uint8)
 
         # Ensure prev_pred_data is an array
-        if prev_pred_data is None:
-            print("   prev_pred_data is None, initializing as zeros.")
-            prev_pred_data = np.zeros_like(image_data, dtype=np.uint8)
+        if prev_pred is None:
+            print("   prev_pred is None, initializing as zeros.")
+            prev_pred = np.zeros_like(image, dtype=np.uint8)
         else:
-            print(f"   Received prev_pred_data shape: {prev_pred_data.shape}, dtype: {prev_pred_data.dtype}")
-            # Save initial prev_pred_data for this iteration
-            np.save(os.path.join(self.debug_save_dir, f"{base_debug_prefix}_0a_prev_pred_input.npy"), prev_pred_data)
+            print(
+                f"   Received prev_pred shape: {prev_pred.shape}, dtype: {prev_pred.dtype}"
+            )
+            # Save initial prev_pred for this iteration
 
-        
-        # Determine number of classes and iteration type
+        # Determine number of classes and iteration type (bbox or clicks)
         num_classes_prompted = 0
         is_bbox_iteration = False
-        if bbox_data is not None:
-            num_classes_prompted = len(bbox_data)
+        if bboxs is not None:
+            num_classes_prompted = len(bboxs)
             is_bbox_iteration = True
             print(f"   Mode: BBox, Classes Prompted: {num_classes_prompted}")
-        elif clicks_data is not None:
-            num_classes_prompted = len(clicks_data)
+        elif clicks is not None:
+            num_classes_prompted = len(clicks)
             print(f"   Mode: Clicks, Classes Prompted: {num_classes_prompted}")
         else:
             print("   Warning: No prompts provided. Returning previous prediction.")
-            return prev_pred_data.copy(), time.time() - start_time
+            return prev_pred.copy(), time.time() - start_time
 
         # Determine number of classes to process
-        num_classes = num_classes_prompted if num_classes_max is None else min(num_classes_max, num_classes_prompted)
+        num_classes = (
+            num_classes_prompted
+            if num_classes_max is None
+            else min(num_classes_max, num_classes_prompted)
+        )
         print(f"   Processing up to {num_classes} classes.")
 
         # --- Iterate through classes ---
         for idx in range(num_classes):
-            class_index = idx + 1 # SAM uses 1-based indexing
-            # Unique prefix for files related to this class in this iteration
-            debug_prefix = f"{base_debug_prefix}_class{class_index}"
-            print(f"\n--- Processing Class Index: {class_index} ---")
+            class_id = idx + 1  # 0 is reserved for background
+            print(f"\n--- Processing Class Index: {class_id} ---")
 
             # --- Verify Inputs for this Class ---
-            cls_prev_seg_mask = (prev_pred_data == class_index).astype(np.uint8)
-            print(f"   Input cls_prev_seg_mask shape: {cls_prev_seg_mask.shape}, Sum: {np.sum(cls_prev_seg_mask)}")
-            np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_0b_cls_prev_seg_mask.npy"), cls_prev_seg_mask)
+            cls_prev_seg = (prev_pred == class_id).astype(np.uint8)
 
             # --- Copy previous prediction to output (will be overwritten if inference succeeds) ---
-            final_segmentation[cls_prev_seg_mask != 0] = class_index
-            print(f"   Copied previous prediction area for class {class_index} to initial output.")
+            final_segmentation[cls_prev_seg != 0] = class_id
 
-            # --- Determine and Verify Prompt Point ---
-            prompt_point = None # Expected format ZYX for create_gt_arr
-            is_positive_prompt = False
+            print(
+                f"   Copied previous prediction area for class {class_id} to initial output."
+            )
 
             if is_bbox_iteration:
-                bbox = bbox_data[idx]
-                z_cen = (bbox['z_min'] + bbox['z_max']) / 2
-                y_cen = (bbox['z_mid_y_min'] + bbox['z_mid_y_max']) / 2
-                x_cen = (bbox['z_mid_x_min'] + bbox['z_mid_x_max']) / 2
-                prompt_point = (z_cen, y_cen, x_cen) # Assuming ZYX order
-                is_positive_prompt = True
-                print(f"   Using BBox center as prompt point (ZYX?): {prompt_point}")
-            else: # Click iteration
-                fg_clicks = clicks_data[idx].get('fg', []) # Expected format: list of [x,y,z]
-                bg_clicks = clicks_data[idx].get('bg', []) # Expected format: list of [x,y,z]
+                # create a bbox mask for the current class, used later to create the roi
+                bbox = bboxs[idx]
+                img_bbox = np.zeros_like(image)
+                img_bbox[
+                    bbox["z_min"] : bbox["z_max"],
+                    bbox["z_mid_y_min"] : bbox["z_mid_y_max"],
+                    bbox["z_mid_x_min"] : bbox["z_mid_x_max"],
+                ] = class_id
+                cls_gt = img_bbox  # TODO : change this ambiguous name
+                
+            else:  # Click iteration
+                fg_clicks = clicks[idx].get(
+                    "fg", []
+                )  # Expected format: list of [z, y, x]
+                bg_clicks = clicks[idx].get(
+                    "bg", []
+                )  # Expected format: list of [z, y, x]
+                print(f"   Foreground clicks: {fg_clicks}")
+                print(f"   Background clicks: {bg_clicks}")
                 if fg_clicks:
-                    last_click_xyz = fg_clicks[-1]
-                    prompt_point = (last_click_xyz[2], last_click_xyz[1], last_click_xyz[0]) # Convert XYZ to ZYX
+                    prompt_point = fg_clicks[-1]
                     is_positive_prompt = True
-                    print(f"   Using last FG click (XYZ: {last_click_xyz}) as prompt point (ZYX): {prompt_point}")
+                    print(
+                        f"   FG click (ZYX): {prompt_point}"
+                    )
+
+                    cls_gt = create_gt_arr(image.shape, prompt_point, category_index=class_id)
+                    # just a bbox around the center point (size 5)
+
                 elif bg_clicks:
-                    last_click_xyz = bg_clicks[-1]
-                    prompt_point = (last_click_xyz[2], last_click_xyz[1], last_click_xyz[0]) # Convert XYZ to ZYX
+                    """
+                    prompt_point = bg_clicks[-1]
+                    """
+                    prompt_point = (image.shape[0] // 2, image.shape[1] // 2, image.shape[2] // 2)
                     is_positive_prompt = False
-                    print(f"   Using last BG click (XYZ: {last_click_xyz}) as prompt point (ZYX): {prompt_point}")
+                    print(
+                        f"   BG click. We just use the center for now: (ZYX){prompt_point}"
+                    )
+                    # TODO : How to deal with background clicks?
+                    # the model deals with bbox and positive clicks by 
+                    # creating a mask around them.
+                    # But what about background clicks?
+                    # For now we create a mask around the center of the image
+                    # This is really bad. Lets find something better.
+                    cls_gt = create_gt_arr(image.shape, prompt_point, category_index=class_id)
+
                 else:
-                    print(f"   Skipping class {class_index}: No clicks in this step.")
+                    print(f"   Skipping class {class_id}: No clicks in this step.")
                     continue
+            print(f"unique values in cls_gt: {np.unique(cls_gt, return_index=True)}")
+            save_volume_viz(
+                image, slice_indices=list(range(34, 51, 4)), save_path="debug_image.png"
+            )
+            save_volume_viz(
+                cls_gt,
+                slice_indices=list(range(34, 51, 4)),
+                save_path="debug_cls_gt.png",
+            )
 
-            print(f"   Prompt point determined: {prompt_point}, is_positive: {is_positive_prompt}")
+            # 1. Preprocess
+            print(f"   Preprocessing...")
+            print(f"     Input image_data shape: {image.shape}, dtype: {image.dtype}")
+            print(
+                f"     Input cls_gt shape: {cls_gt.shape}, dtype: {cls_gt.dtype}, sum: {np.sum(cls_gt)}"
+            )
+            print(
+                f"     Input cls_prev_seg_mask shape: {cls_prev_seg.shape}, dtype: {cls_prev_seg.dtype}"
+            )
 
-            # --- Mimic condition: Only proceed if positive prompt ---
-            if not is_positive_prompt:
-                print(f"   Skipping SAM steps: Last prompt was negative.")
-                continue
+            spacing = [
+                spacing[2],
+                spacing[0],
+                spacing[1],
+            ]  # order used by data_preprocess
 
-            if prompt_point is None:
-                 print(f"   ERROR: Prompt point is None unexpectedly. Skipping.")
-                 continue
+            roi_image, roi_label, roi_prev_seg, meta_info = data_preprocess(
+                image,
+                cls_gt,
+                cls_prev_seg,
+                orig_spacing=spacing,
+                category_index=class_id,
+            )
 
+            print(f"     ROI image shape: {roi_image.shape}, dtype: {roi_image.dtype}")
+            print(f"     ROI label shape: {roi_label.shape}, dtype: {roi_label.dtype}")
+            print(
+                f"     ROI prev_seg shape: {roi_prev_seg.shape}, dtype: {roi_prev_seg.dtype}"
+            )
+            print(
+                f"     Meta info: {meta_info}, spacing: {spacing}, class_id: {class_id}"
+            )
+            """
+            save_volume_viz(
+                roi_image[0][0].cpu().numpy(),
+                slice_indices=None,
+                save_path="debug_roi_image.png",
+            )
+            save_volume_viz(
+                roi_label[0][0].cpu().numpy(),
+                slice_indices=None,
+                save_path="debug_roi_label.png",
+            )
+            
+            save_volume_viz(
+                roi_prev_seg[0][0].cpu().numpy(),
+                slice_indices=None,
+                save_path="debug_roi_prev_seg.png",
+            )
+            """            
+            # 2. Model predictions
+            print(f"   Running SAM-Med3D inference...")
 
-            # --- Generate and Verify Prompt Mask (cls_gt) ---
-            try:
-                # Ensure coords are int and within bounds for indexing
-                int_prompt_point = tuple(int(max(0, min(image_data.shape[d]-1, prompt_point[d]))) for d in range(3))
-                print(f"   Integer prompt point for create_gt_arr (ZYX): {int_prompt_point}")
+            # 2.1. Get the image embeddings
+            image_embeddings = self.model.image_encoder(roi_image.to(self.device))
+            print(f"image_embeddings shape: {image_embeddings.shape}")
+            
 
-                cls_gt = create_gt_arr(image_data.shape, int_prompt_point, category_index=class_index)
+            # 2.2. Get the prompt embeddings
+            # This is ugly, we can do better
+            # Click info is not passed to the model,
+            # A click is generated within the ROI
+            # TODO: see what we can do with the actual click info
+            # Bbox info is not passed to the model either
+            # (but used previously to create the ROI, see data_preprocess)
 
-                print(f"   Generated cls_gt shape: {cls_gt.shape}, Sum: {np.sum(cls_gt)}, Unique values: {np.unique(cls_gt)}")
-                np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_1_cls_gt.npy"), cls_gt)
-                print(f"   Saved {debug_prefix}_1_cls_gt.npy")
-                if np.sum(cls_gt) == 0:
-                     print(f"   !!! CRITICAL WARNING: cls_gt is empty! Check create_gt_arr or prompt_point conversion.")
-                     continue
+            # initialize empty tensors for points_coords and points_labels
+            points_coords, points_labels = torch.zeros(1, 0, 3).to(
+                self.device
+            ), torch.zeros(1, 0).to(self.device)
 
-            except Exception as e:
-                 print(f"   ERROR generating cls_gt prompt for class {class_index}: {e}")
-                 import traceback
-                 traceback.print_exc()
-                 continue
+            # by default, add a positive point at the center of the image
+            new_points_co, new_points_la = torch.Tensor([[[64, 64, 64]]]).to(
+                self.device
+            ), torch.Tensor([[1]]).to(torch.int64)
+            
+            # if we have a previous prediction,
+            # we can use it to create smarter points : 
 
-
-            # --- Run SAM Steps using Helpers ---
-            try:
-                # 1. Preprocess
-                print(f"   Preprocessing...")
-                print(f"     Input image_data shape: {image_data.shape}, dtype: {image_data.dtype}")
-                print(f"     Input cls_gt shape: {cls_gt.shape}, dtype: {cls_gt.dtype}, sum: {np.sum(cls_gt)}")
-                print(f"     Input cls_prev_seg_mask shape: {cls_prev_seg_mask.shape}, dtype: {cls_prev_seg_mask.dtype}")
-                print(f"     Input spacing_data (XYZ?): {spacing_data}")
-
-                # --- Check/Adjust spacing order for data_preprocess ---
-                # Assuming data_preprocess uses torchio Resample which likely expects XYZ target spacing if zipped with XYZ orig_spacing
-                current_spacing = [spacing_data[2], spacing_data[0], spacing_data[1]]
-
-                roi_image, roi_label, roi_prev_seg, meta_info = data_preprocess(
-                    image_data.astype(np.float32), # Ensure float input for normalization
-                    cls_gt,
-                    cls_prev_seg_mask,
-                    orig_spacing=current_spacing,
-                    category_index=class_index
+            # ensuring existence and correct shape of roi_prev_seg
+            if roi_label is not None:
+                roi_prev_seg = (
+                    roi_prev_seg
+                    if (roi_prev_seg is not None)
+                    else torch.zeros(
+                        1,
+                        1,
+                        roi_image.shape[2] // 4,
+                        roi_image.shape[3] // 4,
+                        roi_image.shape[4] // 4,
+                    )
                 )
-                print(f"   Preprocessing done.")
-                print(f"     roi_image shape: {roi_image.shape}, dtype: {roi_image.dtype}") # Expected: [1, 1, D, H, W] Tensor
-                print(f"     roi_label shape: {roi_label.shape}, sum: {roi_label.sum()}, dtype: {roi_label.dtype}") # Prompt mask in ROI
-                print(f"     roi_prev_seg shape: {roi_prev_seg.shape}, sum: {roi_prev_seg.sum()}, dtype: {roi_prev_seg.dtype}") # Prev seg in ROI
-                print(f"     meta_info: {meta_info}")
-                # Save ROI outputs
-                np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_2_roi_image.npy"), roi_image.cpu().numpy())
-                np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_2_roi_label.npy"), roi_label.cpu().numpy())
-                np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_2_roi_prev_seg.npy"), roi_prev_seg.cpu().numpy())
-                print(f"   Saved ROI arrays for class {class_index}")
+                # 
+                roi_prev_seg = F.interpolate(
+                    roi_prev_seg,
+                    size=(
+                        roi_image.shape[2] // 4,
+                        roi_image.shape[3] // 4,
+                        roi_image.shape[4] // 4,
+                    ),
+                    mode="nearest",
+                ).to(torch.float32)
 
-                # 2. Inference (CRITICAL STEP)
-                print(f"   Running SAM inference...")
-                print(f"     Inputs to sam_model_infer:")
-                print(f"       roi_image shape: {roi_image.shape}")
-                print(f"       roi_gt (roi_label) shape: {roi_label.shape}, sum: {roi_label.sum()}")
-                print(f"       prev_low_res_mask (roi_prev_seg) shape: {roi_prev_seg.shape}, sum: {roi_prev_seg.sum()}")
+                print(np.unique(roi_label.cpu().numpy()))
 
-                # Ensure inputs are on the correct device if model is on GPU
-                roi_image = roi_image.to(self.device)
-                roi_label = roi_label.to(self.device)
-                roi_prev_seg = roi_prev_seg.to(self.device)
-
-                roi_pred = sam_model_infer(
-                    self.model, roi_image,
-                    roi_gt=roi_label, # Pass the processed prompt mask
-                    prev_low_res_mask=roi_prev_seg # Pass the previous mask in ROI space
+                # finds all wrong pixels, randomly picks one,
+                # returns click information formatted for model input.
+                # TODO : As of its written, its simply chosing a random pixel
+                # from roi_label and labeling it as a positive click
+                prompt_generator = random_sample_next_click
+                new_points_co, new_points_la = prompt_generator(
+                    torch.zeros_like(roi_image)[0, 0], roi_label[0, 0]
                 )
-                # roi_pred is expected: NumPy array [D, H, W] (binary 0/1)
-                print(f"   Inference done.")
-                print(f"     roi_pred output shape: {roi_pred.shape}, dtype: {roi_pred.dtype}, Sum: {np.sum(roi_pred)}, Unique: {np.unique(roi_pred)}")
-                np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_3_roi_pred.npy"), roi_pred)
-                print(f"   Saved {debug_prefix}_3_roi_pred.npy")
+                new_points_co, new_points_la = new_points_co.to(
+                    self.device
+                ), new_points_la.to(self.device)
+            points_coords = torch.cat([points_coords, new_points_co], dim=1)
+            points_labels = torch.cat([points_labels, new_points_la], dim=1)
 
-                if np.sum(roi_pred) == 0:
-                    print(f"   !!! CRITICAL WARNING: roi_pred is empty! Inference failed or produced no segmentation.")
-                    # continue # Optionally skip postprocessing if prediction is empty
+            sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
+                points=[points_coords, points_labels],
+                boxes=None,  # bbox is not handeled by the model TODO check anyway
+                masks = roi_prev_seg.to(self.device), # TODO providing no mask kills performance
+            )
+
+            # 2.3. Get the mask predictions
+            low_res_masks, _ = self.model.mask_decoder(
+                image_embeddings=image_embeddings,  # (1, 384, 8, 8, 8)
+                image_pe=self.model.prompt_encoder.get_dense_pe(),  # (1, 384, 8, 8, 8)
+                sparse_prompt_embeddings=sparse_embeddings,  # (1, 2, 384)
+                dense_prompt_embeddings=dense_embeddings,  # (1, 384, 8, 8, 8)
+            )
 
 
-                # 3. Postprocess
-                print(f"   Postprocessing...")
-                # data_postprocess expects roi_pred as numpy [D,H,W]
-                pred_ori = data_postprocess(roi_pred, meta_info, output_dir=None)
-                # pred_ori should be NumPy array in original image space (ZYX?)
-                print(f"   Postprocessing done.")
-                print(f"     pred_ori shape: {pred_ori.shape}, dtype: {pred_ori.dtype}, Sum: {np.sum(pred_ori)}, Unique: {np.unique(pred_ori)}")
-                np.save(os.path.join(self.debug_save_dir, f"{debug_prefix}_4_pred_ori.npy"), pred_ori)
-                print(f"   Saved {debug_prefix}_4_pred_ori.npy")
 
+            print(f"low_res_masks shape: {low_res_masks.shape}")
+            """
+            save_volume_viz(
+                low_res_masks[0][0].cpu().detach().numpy(),
+                slice_indices=None,
+                save_path="debug_low_res_masks.png",
+            )
+            """
+            # 3. Postprocess
 
-                # 4. Aggregate Result
-                update_mask = (pred_ori != 0)
-                sum_before = np.sum(final_segmentation == class_index)
-                final_segmentation[update_mask] = class_index
-                sum_after = np.sum(final_segmentation == class_index)
-                print(f"   Aggregation: Sum before={sum_before}, Sum after={sum_after}. Updated voxels: {np.sum(update_mask)}")
+            print(f"   Postprocessing...")
+            prev_mask = F.interpolate(
+                low_res_masks,
+                size=roi_image.shape[-3:],
+                mode="trilinear",
+                align_corners=False,
+            )
 
-            except Exception as e:
-                print(f"   ERROR during SAM steps for class {class_index}: {e}")
-                import traceback
-                traceback.print_exc()
-                print(f"   Keeping previous prediction for class {class_index} due to error.")
-                # The copied previous prediction remains in final_segmentation
+            print(f"prev_mask shape: {prev_mask.shape}")
+            """
+            save_volume_viz(
+                prev_mask[0][0].cpu().detach().numpy(),
+                slice_indices=list(range(34, 51, 4)),
+                save_path="debug_prev_mask.png",
+            )
+            """
+            medsam_seg_prob = torch.sigmoid(prev_mask)  # (1, 1, 64, 64, 64)
+            medsam_seg_prob = medsam_seg_prob.cpu().detach().numpy().squeeze()
+            medsam_seg_mask = (medsam_seg_prob > 0.5).astype(np.uint8)
+            print(f"medsam_seg_prob shape: {medsam_seg_prob.shape}")
+            """
+            save_volume_viz(
+                medsam_seg_prob,
+                slice_indices=list(range(34, 51, 4)),
+                save_path="debug_medsam_seg_prob.png",
+            )
+            """
+            pred_ori = data_postprocess(medsam_seg_mask, meta_info)
+            final_segmentation[pred_ori != 0] = class_id
 
-        # --- End of class loop ---
-
-        # Save final segmentation for this iteration step
-        final_segmentation_path = os.path.join(self.debug_save_dir, f"{base_debug_prefix}_5_final_segmentation.npy")
-        np.save(final_segmentation_path, final_segmentation)
-        print(f"Saved final segmentation to {final_segmentation_path}")
-
+            """
+            save_volume_viz(
+                pred_ori,
+                slice_indices=list(range(34, 51, 4)),
+                save_path="debug_pred_ori.png",
+            )
+            """
         inference_time = time.time() - start_time
         print(f"--- SAMMed3DPredictor.predict() end. Time: {inference_time:.2f}s ---")
 
         return final_segmentation, inference_time
-
-
