@@ -126,7 +126,7 @@ def visualize_slices_grid(image_path, gt_path, pred_path, n_slices=9, axis=0, ou
         # Plot Image Slice
         ax_img = axes[i, 0]
         ax_img.imshow(img_slice, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
-        ax_img.set_title(f"Img Slice {slice_index}")
+        ax_img.set_title(f"Original volume - Slice {slice_index}")
         ax_img.axis('off')
 
         # Plot Ground Truth Slice (Overlay)
@@ -134,7 +134,7 @@ def visualize_slices_grid(image_path, gt_path, pred_path, n_slices=9, axis=0, ou
         ax_gt.imshow(img_slice, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
         gt_masked = np.ma.masked_where(gt_slice == 0, gt_slice)
         ax_gt.imshow(gt_masked, cmap='jet', alpha=0.5, aspect='equal', vmin=1) # Use alpha, distinct cmap
-        ax_gt.set_title(f"GT Slice {slice_index}")
+        ax_gt.set_title(f"Ground truth - Slice {slice_index}")
         ax_gt.axis('off')
 
         # Plot Prediction Slice (Overlay)
@@ -142,7 +142,7 @@ def visualize_slices_grid(image_path, gt_path, pred_path, n_slices=9, axis=0, ou
         ax_pred.imshow(img_slice, cmap='gray', vmin=vmin, vmax=vmax, aspect='equal')
         pred_masked = np.ma.masked_where(pred_slice == 0, pred_slice)
         ax_pred.imshow(pred_masked, cmap='jet', alpha=0.5, aspect='equal', vmin=1) # Use same settings
-        ax_pred.set_title(f"Pred Slice {slice_index}")
+        ax_pred.set_title(f"Model prediction - Slice {slice_index}")
         ax_pred.axis('off')
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout
@@ -179,11 +179,11 @@ if __name__ == "__main__":
     parser.add_argument("-nc", "--nb_cases", type=int, default=None, 
                         help="Number of cases to visualize.")
 
-
+    
     import yaml
     config = yaml.safe_load(open("config.yaml"))
     print(os.listdir(config["RESULTS_DIR"]+"/sammed3d/"))
-    
+    """
     file_name = os.listdir(config["RESULTS_DIR"]+"/sammed3d/")[0]
     file_name = os.path.splitext(file_name)[0]
     # remove the _pred at the end of the file
@@ -210,10 +210,13 @@ if __name__ == "__main__":
     print(pred['segs'].shape) # 3d volume
     print(pred['all_segs'].shape) # 3d volumes
 
+    """
+
     args = parser.parse_args()
 
     file_list = os.listdir(config["RESULTS_DIR"]+"/sammed3d/")
     file_list = file_list[:args.nb_cases] if args.nb_cases is not None else file_list
+    file_list= ["CT_AMOS_amos_0230_pred.npz"]
     for file_name in file_list:
         file_name = os.path.splitext(file_name)[0]
         # remove the _pred at the end of the file
