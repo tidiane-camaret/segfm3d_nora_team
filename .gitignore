@@ -5,6 +5,7 @@
 /results
 /data
 /wandb
-/docker_submission/images
+/docker_images/
+/scripts/docker_submission/model
 __pycache__
 config.yaml
