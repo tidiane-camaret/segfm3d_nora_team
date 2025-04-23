@@ -49,11 +49,16 @@ The [evaluation script](CVPR-MedSegFMCompetition/CVPR25_iter_eval.py) is designe
 
 ```bash
 # Convert the Docker image to a Singularity image
-singularity build docker_images/sammed3d_baseline.sif docker-archive://docker_images/sammed3d_baseline.tar
+singularity build docker_submission/images/sammed3d_baseline.sif docker-archive://docker_submission/images/sammed3d_baseline.tar
 
-# Test the Singularity image
-singularity shell -B $PWD/inputs:/workspace/inputs,$PWD/outputs:/workspace/outputs sammed3d_baseline.sif
-#Then run predict.sh
+# Test the Singularity image (nv : GPU usage)
+singularity shell --nv docker_submission/images/sammed3d_baseline.sif
+
+# bind the input and output directories
+singularity shell --nv -B $PWD/data:/workspace/inputs,$PWD/results/sammed3d:/workspace/outputs  docker_submission/images/sammed3d_baseline.sif 
+
+
+#Then sh predict.sh
 ```
 
 ### Running the Evaluation Script

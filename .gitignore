@@ -1,7 +1,10 @@
 *.egg-info
 *.py[cod]
+*.tar
+*.sif
 /results
 /data
 /wandb
+/docker_submission/images
 __pycache__
 config.yaml
