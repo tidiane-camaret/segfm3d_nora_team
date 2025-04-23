@@ -29,8 +29,6 @@ from src.eval_tools import (
 )
 from src.viz_tools import plot_middle_slice, center_of_mass
 
-from src.sammed3d import SAMMed3DPredictor
-from src.nninteractive import nnInteractivePredictor
 
 from surface_distance import (
     compute_dice_coefficient,
@@ -91,9 +89,17 @@ def evaluate(
         wandb.define_metric("Case/TotalRunningTime", summary="mean")
 
     if method == "sammed3d":
+        
+        from src.sammed3d import SAMMed3DPredictor
         predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
     elif method == "nnint":
+        from src.nninteractive import nnInteractivePredictor
         predictor = nnInteractivePredictor(
+            checkpoint_path=os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0"),
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    elif method == "nnintcore":
+        from src.nninteractive import nnInteractiveCorePredictor
+        predictor = nnInteractiveCorePredictor(
             checkpoint_path=os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0"),
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     else:

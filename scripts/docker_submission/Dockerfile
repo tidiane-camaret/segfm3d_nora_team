@@ -2,18 +2,19 @@ FROM python:3.13-slim-bookworm
 
 WORKDIR /workspace
 
-# Install dependencies
+## Install dependencies
 RUN pip install numpy torch scikit-image connected-components-3d
 
-# Copy model and scripts
+## Copy model and scripts
 COPY model/ /workspace/model/
 COPY predict.sh /workspace/predict.sh
 COPY predict.py /workspace/predict.py
 
-# Copy dependencies
+## Copy dependencies
+# external dependencies
 COPY /nfs/norasys/notebooks/camaret/nnInteractive /workspace/
 RUN pip install -e /workspace/nnInteractive
-
+# local depedencies
 RUN mkdir -p /workspace/src
 COPY /nfs/norasys/notebooks/camaret/segfm3d_nora_team/src/nninteractive.py /workspace/src/nninteractive.py
 
