@@ -43,3 +43,40 @@ Install Dependencies:
 uv pip install -r requirements.lock
 ```
 
+## Evaluating a submission
+### Converting Docker image to Singularity
+The [evaluation script](CVPR-MedSegFMCompetition/CVPR25_iter_eval.py) is designed to run in a Docker container. We don't have the ability to use Docker in the cluster, but we can use Singularity. 
+
+```bash
+# Convert the Docker image to a Singularity image
+singularity build docker_images/sammed3d_baseline.sif docker-archive://docker_images/sammed3d_baseline.tar
+
+# Test the Singularity image
+singularity shell -B $PWD/inputs:/workspace/inputs,$PWD/outputs:/workspace/outputs sammed3d_baseline.sif
+#Then run predict.sh
+```
+
+### Running the Evaluation Script
+Modifiy the evaluation script so that it uses Singularity instead of Docker :
+```bash
+# Original Docker command:
+# cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+
+# New Singularity command:
+if torch.cuda.is_available(): # GPU available
+    cmd = 'singularity run --nv -B $PWD/inputs/:/workspace/inputs/,$PWD/outputs/:/workspace/outputs/ {}.sif /bin/bash -c "sh predict.sh"'.format(teamname)
+else:
+    cmd = 'singularity run -B $PWD/inputs/:/workspace/inputs/,$PWD/outputs/:/workspace/outputs/ {}.sif /bin/bash -c "sh predict.sh"'.format(teamname)
+```
+Also, remove Remove "docker image load" and "docker rmi" commands from the script.
+
+## Building Docker images
+
+Use the following command to build the image via Singularity:
+
+```bash
+# Build the Docker image using Singularity
+singularity build sam-med3d.sif docker://sam-med3d:latest
+# Save the Docker image to a tar file
+singularity save sam-med3d.sif -o sam-med3d.tar
+```
