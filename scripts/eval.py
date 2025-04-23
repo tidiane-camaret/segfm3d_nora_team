@@ -6,6 +6,7 @@ TODO : Make sure that the metrics are in line with the competition
 """
 
 import argparse
+from calendar import c
 import os
 import shutil
 import time
@@ -14,6 +15,7 @@ from collections import OrderedDict
 import cc3d
 import numpy as np
 import pandas as pd
+import torch
 import wandb  # Import Wandb
 import yaml
 from scipy import integrate
@@ -28,6 +30,8 @@ from src.eval_tools import (
 from src.viz_tools import plot_middle_slice, center_of_mass
 
 from src.sammed3d import SAMMed3DPredictor
+from src.nninteractive import nnInteractivePredictor
+
 from surface_distance import (
     compute_dice_coefficient,
     compute_surface_dice_at_tolerance,
@@ -50,11 +54,11 @@ except Exception as e:
     print(f"GPU not available or CuPy/cuCIM error ({e}). Using SciPy for EDT.")
 
 config = yaml.safe_load(open("config.yaml"))
-predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
 
 
 # --- Main Evaluation Function ---
 def evaluate(
+    method,
     img_dir,
     gt_dir,
     output_dir,
@@ -76,6 +80,7 @@ def evaluate(
                 "num_clicks": num_clicks,
                 "evaluation_mode": "local_script",
                 "gpu_available": GPU_AVAILABLE,
+                "method": method,
             },
         )
         # Define metrics for WandB summary
@@ -85,6 +90,15 @@ def evaluate(
         wandb.define_metric("Case/NSD_Final", summary="mean")
         wandb.define_metric("Case/TotalRunningTime", summary="mean")
 
+    if method == "sammed3d":
+        predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
+    elif method == "nnint":
+        predictor = nnInteractivePredictor(
+            checkpoint_path=os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0"),
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    else:
+        raise ValueError(f"Unknown method: {method}.")
+                                   
     os.makedirs(output_dir, exist_ok=True)
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
     if num_cases > 0:
@@ -368,6 +382,13 @@ if __name__ == "__main__":
         "Local Iterative Segmentation Evaluation with WandB"
     )
     parser.add_argument(
+        "-me",
+        "--method",
+        default="nnint",
+        type=str,
+        help="method used for segmentation, sammed3d or nnint",
+    )
+    parser.add_argument(
         "-o",
         "--save_path",
         default="./results",
@@ -417,6 +438,7 @@ if __name__ == "__main__":
     args.save_path = os.path.join(config["RESULTS_DIR"], "sammed3d")
 
     evaluate(
+        method=args.method,
         img_dir=args.val_imgs_path,
         gt_dir=args.validation_gts_path,
         output_dir=args.save_path,
