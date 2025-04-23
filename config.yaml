@@ -8,6 +8,7 @@ SAM_REPO_DIR: "/nfs/norasys/notebooks/camaret/SAM-Med3D"
 
 ONNX_MODEL_PATH: "/nfs/norasys/notebooks/camaret/model_inference/models/sammed3d.onnx"
 
+NNINT_CKPT_DIR : "/nfs/norasys/notebooks/camaret/model_checkpoints/nnint"
 
 # Meta 
 
