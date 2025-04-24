@@ -1,16 +1,18 @@
 import os
+
 import numpy as np
 import torch
-
 from src.nninteractive import nnInteractivePredictor
+
+
 predictor = nnInteractivePredictor(
-            checkpoint_path="workspace/model/nnInteractive_v1.0",
+            checkpoint_path="model/nnInteractive_v1.0",
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
-for filename in os.listdir('/workspace/inputs/3D_val_npz'): #TODO see exactly the test dir configuration
+for filename in os.listdir('inputs/3D_val_npz'): #TODO see exactly the test dir configuration
     if filename.endswith('.npz'):
         # Load input
-        data = np.load(f'/workspace/inputs/3D_val_npz/{filename}', allow_pickle=True)
+        data = np.load(f'inputs/3D_val_npz/{filename}', allow_pickle=True)
         image = data['imgs']
         
         # Get clicks if available
@@ -36,6 +38,6 @@ for filename in os.listdir('/workspace/inputs/3D_val_npz'): #TODO see exactly th
         
         # Save output with the same filename
         np.savez_compressed(
-            f'/workspace/outputs/{filename}',
+            f'outputs/{filename}',
             segs=segmentation
         )

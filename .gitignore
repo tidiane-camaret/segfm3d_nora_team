@@ -2,10 +2,13 @@
 *.py[cod]
 *.tar
 *.sif
+*tar.gz
 /results
 /data
 /wandb
 /docker_images/
 /scripts/docker_submission/model
+/scripts/docker_submission/inputs
+/scripts/docker_submission/outputs
 __pycache__
 config.yaml

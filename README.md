@@ -15,9 +15,11 @@ To run a quick test on a single case ( `-n 1`), with only the bounding box itera
 uv run python scripts/eval.py -c 0 -n 1 -m 1 --no_wandb
 ```
 
-(Note: This currently uses the SAM-Med3D predictor by default. Add classes in the /src directory to use other predictors.)
 
-### Baseline: SAM-Med3D
+
+## Methods  
+
+### SAM-Med3D
 
 Implementation and evaluation logic related to the SAM-Med3D baseline model.
 
@@ -29,39 +31,47 @@ CPU RAM: ~64 GB recommended.
 
 Training Time (Example): ~0.8 GPU hours per epoch on the Coreset track dataset (indicative value).
 
+Some dependencies are pinned to specific versions or forks required by the CVPR25_3DFM branch of the original SAM-Med3D repository. These should be handled by ```bash requirements.lock ```
 
 
-### Setup & Running:
+## Submission
+The [evaluation script](CVPR-MedSegFMCompetition/CVPR25_iter_eval.py) is designed to run in a Docker container. If you don't have Docker installed, you can use Singularity as an alternative (see below).
 
-Some dependencies are pinned to specific versions or forks required by the CVPR25_3DFM branch of the original SAM-Med3D repository.
-
-These should be handled by installing the locked requirements file.
-Install Dependencies:
+### Using Docker : 
 
 ```bash
-# Using uv package manager
-uv pip install -r requirements.lock
+### Building the Docker image
+
+cd scripts/docker_submission/
+docker build -t nora_team:latest .
+
+### Saving as a tar file
+
+docker save nora_team:latest | gzip > nora_team:latest.tar.gz
+
+### Testing the Docker image on one case (nv : GPU usage)
+
+docker run --gpus "device=0" -m 32G --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ nora_team:latest /bin/bash -c "sh predict.sh"
 ```
 
-## Evaluating a submission
-### Converting Docker image to Singularity
-The [evaluation script](CVPR-MedSegFMCompetition/CVPR25_iter_eval.py) is designed to run in a Docker container. We don't have the ability to use Docker in the cluster, but we can use Singularity. 
+### Using Singularity : 
+#### Converting Docker image to Singularity
 
 ```bash
 # Convert the Docker image to a Singularity image
-singularity build docker_submission/images/sammed3d_baseline.sif docker-archive://docker_submission/images/sammed3d_baseline.tar
+singularity build docker_images/baselines/sammed3d_baseline.sif docker-archive://docker_images/baselines/sammed3d_baseline.tar
 
 # Test the Singularity image (nv : GPU usage)
-singularity shell --nv docker_submission/images/sammed3d_baseline.sif
+singularity shell --nv docker_images/baselines/sammed3d_baseline.sif
 
 # bind the input and output directories
-singularity shell --nv -B $PWD/data:/workspace/inputs,$PWD/results/sammed3d:/workspace/outputs  docker_submission/images/sammed3d_baseline.sif 
+singularity shell --nv -B $PWD/data:/workspace/inputs,$PWD/results/sammed3d:/workspace/outputs  docker_images/baselines/sammed3d_baseline.sif 
 
 
 #Then sh predict.sh
 ```
 
-### Running the Evaluation Script
+#### Running the Evaluation Script
 Modifiy the evaluation script so that it uses Singularity instead of Docker :
 ```bash
 # Original Docker command:
@@ -75,9 +85,8 @@ else:
 ```
 Also, remove Remove "docker image load" and "docker rmi" commands from the script.
 
-## Building Docker images
+#### Building Docker images from Singularity
 
-Use the following command to build the image via Singularity:
 
 ```bash
 # Build the Docker image using Singularity
