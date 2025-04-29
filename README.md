@@ -42,16 +42,27 @@ The [evaluation script](CVPR-MedSegFMCompetition/CVPR25_iter_eval.py) is designe
 ```bash
 ### Building the Docker image
 
-cd scripts/docker_submission/
+cd docker_context/
 docker build -t nora_team:latest .
+
+### Testing the Docker image on one case (nv : GPU usage)
+# Note : The official script copies the images in a temp directory first. 
+# We reproduce this behavior by providing one image in docker_submission/test/inputs/ 
+
+cd docker_submission/ 
+
+docker container run --gpus "device=0" -m 32G --name nora_team --rm -v $PWD/test/inputs/:/workspace/inputs/ -v $PWD/test/outputs/:/workspace/outputs/ nora_team:latest /bin/bash -c "sh predict.sh"  
 
 ### Saving as a tar file
 
-docker save nora_team:latest | gzip > nora_team:latest.tar.gz
+docker save nora_team:latest | gzip > /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission/nora_team.tar.gz
 
-### Testing the Docker image on one case (nv : GPU usage)
+### Evaluating the image using the official script 
 
-docker run --gpus "device=0" -m 32G --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ nora_team:latest /bin/bash -c "sh predict.sh"
+# /data contains sample image and gt
+
+python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission --test_img_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/inputs/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/inputs/3D_val_gt --verbose
+
 ```
 
 ### Using Singularity : 

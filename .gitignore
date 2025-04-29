@@ -7,8 +7,9 @@
 /data
 /wandb
 /docker_images/
-/scripts/docker_submission/model
-/scripts/docker_submission/inputs
-/scripts/docker_submission/outputs
+/docker_context/model
+/docker_submission/data
+/docker_submission/outputs
 __pycache__
 config.yaml
+cufile.log
