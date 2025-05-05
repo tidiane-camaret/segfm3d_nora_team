@@ -63,6 +63,13 @@ docker save nora_team:latest | gzip > /nfs/norasys/notebooks/camaret/segfm3d_nor
 
 python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission --test_img_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/inputs/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/inputs/3D_val_gt --verbose
 
+# with more data (cvpr25/data/)
+python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission --test_img_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_gt/3D_val_gt_interactive --verbose
+
+
+# evaluating on the test examples (/nfs/norasys/notebooks/camaret/cvpr25/test_demo)
+cd /nfs/norasys/notebooks/camaret/cvpr25/test_demo
+docker container run --gpus "device=0" -m 32G --name nora_team --rm -v $PWD/imgs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ nora_team:latest /bin/bash -c "sh predict.sh"
 ```
 
 ### Using Singularity : 
