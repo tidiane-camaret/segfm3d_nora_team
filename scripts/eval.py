@@ -16,6 +16,9 @@ import torch
 import numpy as np
 import random
 import cc3d
+from scipy import integrate
+from collections import OrderedDict
+
 
 
 from src.eval_metrics import ( #TODO : Use the competition repo as source instead
@@ -72,12 +75,16 @@ def evaluate(
         from src.nninteractive import nnInteractivePredictor
         predictor = nnInteractivePredictor(
             checkpoint_path=os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0"),
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            verbose=verbose,
+            )
     elif method == "nnintcore":
         from src.nninteractive import nnInteractiveCorePredictor
         predictor = nnInteractiveCorePredictor(
             checkpoint_path=os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0"),
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            verbose=verbose,
+            )
     else:
         raise ValueError(f"Unknown method: {method}.")
     
@@ -93,6 +100,7 @@ def evaluate(
 
     os.makedirs(output_dir, exist_ok=True)
     all_case_metrics = []
+    metric = OrderedDict({'CaseName': [], 'TotalRunningTime': [], 'RunningTime_1': [], 'RunningTime_2': [], 'RunningTime_3': [], 'RunningTime_4': [], 'RunningTime_5': [], 'RunningTime_6': [], 'DSC_AUC': [], 'NSD_AUC': [], 'DSC_Final': [], 'NSD_Final': [], 'DSC_1': [], 'DSC_2': [], 'DSC_3': [], 'DSC_4': [], 'DSC_5': [], 'DSC_6': [], 'NSD_1': [], 'NSD_2': [], 'NSD_3': [], 'NSD_4': [], 'NSD_5': [], 'NSD_6': [], 'num_class': [], 'runtime_upperbound': []})
 
     ### Loop through cases ###
 
@@ -137,9 +145,12 @@ def evaluate(
             clicks_cls = [{'fg': [], 'bg': []} for _ in range(n_classes)] # skip background class 0 
             clicks_order = [[] for _ in range(n_classes)]
 
+            # Initialize segmentation 
+            segs = np.zeros_like(gts, dtype=np.uint8)  # Initialize with zeros
             
             for it in range(n_clicks + 1): # + 1 due to bbox pred at iteration 0
-                
+
+
                 if it == 0:
                     ### Checking if box exists ###
                     if boxes is None:
@@ -215,6 +226,10 @@ def evaluate(
 
                 ### Computing Metrics
 
+                real_running_time += infer_time
+                metric_temp[f"RunningTime_{it + 1}"] = infer_time
+
+
                 dsc = compute_multi_class_dsc(gts, segs)
                 # compute nsd
                 if dsc > 0.2:
@@ -227,6 +242,67 @@ def evaluate(
                 metric_temp[f'DSC_{it + 1}'] = dsc
                 metric_temp[f'NSD_{it + 1}'] = nsd
                 print('Dice', dsc, 'NSD', nsd)
+                if use_wandb:
+                    wandb.log(
+                        {
+                            f"Case/DSC_{it + 1}": dsc,
+                            f"Case/NSD_{it + 1}": nsd,
+                        }
+                    )
+
+
+            dsc_auc = integrate.cumulative_trapezoid(np.array(dscs[-n_clicks:]), np.arange(n_clicks))[-1] # AUC is only over the point prompts since the bbox prompt is optional
+            nsd_auc = integrate.cumulative_trapezoid(np.array(nsds[-n_clicks:]), np.arange(n_clicks))[-1] 
+            dsc_final = dscs[-1]
+            nsd_final = nsds[-1]
+            for k, v in metric_temp.items():
+                metric[k].append(v)
+            metric['CaseName'].append(case_name)
+            metric['TotalRunningTime'].append(real_running_time)
+            metric['DSC_AUC'].append(dsc_auc)
+            metric['NSD_AUC'].append(nsd_auc)
+            metric['DSC_Final'].append(dsc_final)
+            metric['NSD_Final'].append(nsd_final)
+
+            if use_wandb:
+                # get middle slice 
+                wandb_img = image[
+                    image.shape[0] // 2, :, :
+                ]
+                wandb_pred = segs[
+                    segs.shape[0] // 2, :, :
+                ]
+                wandb_gt = gts[gts.shape[0] // 2, :, :]
+
+
+                # Save the middle slice image
+
+                wandb.log(
+                    {
+                        "Case/DSC_AUC": dsc_auc,
+                        "Case/NSD_AUC": nsd_auc,
+                        "Case/DSC_Final": dsc_final,
+                        "Case/NSD_Final": nsd_final,
+                        "Case/TotalRunningTime": real_running_time,
+                        #"Case/AvgRunningTime": case_summary["AvgRunningTime"],
+                        "Case_name": case_name,  # Log case name for grouping
+                        "Case/NumClasses": n_classes,
+                        "Case/NumClassesUsed": n_classes_max,
+                        "Segmentation": wandb.Image(
+                            wandb_img,
+                            masks={
+                                "predictions": {
+                                    "mask_data": wandb_pred,
+                                    # "class_labels": {0: "Background", 1: "Foreground"},
+                                },
+                                "ground_truth": {
+                                    "mask_data": wandb_gt,
+                                    # "class_labels": {0: "Background", 1: "Foreground"},
+                                },
+                            },
+                        ),
+                    }
+                )
 
         except Exception as e:
             print(e)
@@ -237,7 +313,7 @@ def evaluate(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
-        "Local Iterative Segmentation Evaluation with WandB"
+        "Local Interactive Segmentation Evaluation"
     )
     parser.add_argument(
         "-me",
