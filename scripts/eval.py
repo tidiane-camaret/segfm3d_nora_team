@@ -45,6 +45,8 @@ def evaluate(
 ):
     ### Logging via wandb ###
 
+    print(verbose)
+
     if use_wandb:
         # Initialize WandB
         wandb.init(
@@ -68,7 +70,6 @@ def evaluate(
     ### Load the method ###
 
     if method == "sammed3d":
-        
         from src.sammed3d import SAMMed3DPredictor
         predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
     elif method == "nnint":

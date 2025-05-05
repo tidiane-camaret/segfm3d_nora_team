@@ -1,6 +1,6 @@
 import os
 import time
-
+import sys
 import numpy as np
 import torch
 
@@ -54,6 +54,10 @@ class nnInteractivePredictor:
             final_segmentation (numpy.ndarray): Final segmentation result.
             inference_time (float): Time taken for inference.
         """
+        if not self.verbose: # block all print statements
+            original_stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+
         start_time = time.time()
         self.session.set_image(image[None])
 
@@ -134,6 +138,9 @@ class nnInteractivePredictor:
             results = target_tensor.clone()
             final_segmentation[results != 0] = class_id
 
+        if not self.verbose: # restore stdout
+            sys.stdout = original_stdout
+            
         return final_segmentation, time.time() - start_time
     
 import numpy as np
