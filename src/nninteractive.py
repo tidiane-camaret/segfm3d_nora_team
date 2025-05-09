@@ -1,8 +1,11 @@
 import os
 import time
 import sys
+import click
+from cv2 import add
 import numpy as np
 import torch
+import contextlib
 
 from nnInteractive.inference.inference_session import nnInteractiveInferenceSession
 
@@ -34,19 +37,24 @@ class nnInteractivePredictor:
         self,
         image,  # Full 3D image (NumPy ZYX)
         spacing,  # Voxel spacing (tuple/list XYZ)
-        bboxs=None,  # BBox list (iter 0) [{'z_min':..,}, ...]
-        clicks=None,  # Click list (iter 1+) [{'fg':[[x,y,z],..], 'bg':[[x,y,z],..]}, ...]
+        bboxs=None,  # BBox list (used in iter 0) [{'z_min':..,}, ...] * num_classes
+        clicks=None,  # Click tuple (used in iter 1+) containing :
+        # clicks_cls : coordinates of every fg and bg click so far, {'fg':[[x,y,z],..], 'bg':[[x,y,z],..]} * num_classes
+        # clicks_order : order of clicks,  ['fg', 'fg', 'bg' ...] * num_classes
+        is_bbox_iteration=True,  # True if current bbox iteration, False if click iteration
         prev_pred=None,  # Full prediction from previous step (NumPy ZYX)
         num_classes_max=None,  # Optional: limit number of classes processed
+        add_previous_interactions=False,  # Optional: add previous interaction to the current one
     ):
         """
-        Predicts the segmentation of the input image using nnInteractive for every class described by the bbox or click list
+        Predicts the segmentation of the input image using nnInteractive for every class described by the bbox or click list. Called at each iteration step.
 
         Args:
             image (numpy.ndarray): Input 3D image (NumPy ZYX).
             spacing (tuple/list): Voxel spacing (tuple/list XYZ).
             bboxs (list, optional): List of bounding boxes for prediction.
-            clicks (list, optional): List of clicks for prediction.
+            clicks (tuple, optional): tuple of clicks for prediction. (coordinates, bg/fg order)
+            is_bbox_iteration (Bool, optional),  # True if current bbox iteration, False if click iteration
             prev_pred (numpy.ndarray, optional): Previous prediction.
             num_classes_max (int, optional): Limit number of classes processed.
 
@@ -54,9 +62,7 @@ class nnInteractivePredictor:
             final_segmentation (numpy.ndarray): Final segmentation result.
             inference_time (float): Time taken for inference.
         """
-        if not self.verbose: # block all print statements
-            original_stdout = sys.stdout
-            sys.stdout = open(os.devnull, 'w')
+        
 
         start_time = time.time()
         self.session.set_image(image[None])
@@ -67,17 +73,16 @@ class nnInteractivePredictor:
         self.session.set_target_buffer(target_tensor)
 
         # Determine if bbox or click mode, and set number of classes to predict
-        is_bbox_iteration = False
-        if bboxs is not None:
-            num_classes_prompted = len(bboxs)
-            is_bbox_iteration = True
-            self.log(f"   Mode: BBox, Classes Prompted: {num_classes_prompted}")
-        elif clicks is not None:
-            num_classes_prompted = len(clicks)
-            self.log(f"   Mode: Clicks, Classes Prompted: {num_classes_prompted}")
-        else:
+        if bboxs is None and clicks is None:
             self.log("   Warning: No prompts provided. Returning previous prediction.")
             return prev_pred.copy(), time.time() - start_time
+        elif is_bbox_iteration:
+            num_classes_prompted = len(bboxs)
+            self.log(f"   Mode: BBox, Classes Prompted: {num_classes_prompted}")
+        else:
+            num_classes_prompted = len(clicks[1])
+            self.log(f"   Mode: Clicks, Classes Prompted: {num_classes_prompted}")
+
 
         # Determine number of classes to process
         num_classes = (
@@ -90,14 +95,15 @@ class nnInteractivePredictor:
         # Iteration through classes
         for idx in range(num_classes):
             self.log(f"image shape: {image.shape}")
-
-
-            self.session.reset_interactions()  # Clears the target buffer and resets interactions
-
             class_id = idx + 1  # 0 is reserved for background
             self.log(f"\n--- Processing Class Index: {class_id} ---")
 
+            ### Add the previous interaction
+            self.session.reset_interactions()  # Clears the target buffer and resets interactions
+            self.session.add_initial_seg_interaction(prev_pred==class_id)  # Adds the previous prediction as an interaction
+
             if is_bbox_iteration:
+                self.log("BBOX ITERATION")
                 bbox = bboxs[idx]
                 z_slice = (
                     bbox["z_min"] + bbox["z_max"]
@@ -108,38 +114,40 @@ class nnInteractivePredictor:
                     [bbox["z_mid_x_min"], bbox["z_mid_x_max"]],
                 ]
                 self.log(f"   BBox coordinates: {BBOX_COORDINATES}")
-                self.session.add_bbox_interaction(
-                    BBOX_COORDINATES, include_interaction=True
-                )
+                with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext(): # Suppress output
 
-
-            else:  # click iteration TODO : The eval script passes all of the past clicks. Right now, we simply extract the last one.
-                fg_clicks = clicks[idx].get(
-                    "fg", []
-                )  # Expected format: list of [z, y, x]
-                bg_clicks = clicks[idx].get(
-                    "bg", []
-                )  # Expected format: list of [z, y, x]
-                self.log(f"   Foreground clicks: {fg_clicks}")
-                self.log(f"   Background clicks: {bg_clicks}")
-
-                if fg_clicks:
-                    click_coords = fg_clicks[-1]
-                    self.log(f" using the last foreground click: {click_coords}")
-
-                    self.session.add_point_interaction(
-                        click_coords, include_interaction=True
+                    self.session.add_bbox_interaction(
+                        BBOX_COORDINATES, include_interaction=True
                     )
-                    
-                else:
-                    self.log(f"   Skipping class {class_id}: No positive clicks") # TODO : handle negetive clicks
+
+
+            else:  # click iteration TODO : Now, we add all click in temporal order, adding 
+                self.log("CLICK ITERATION")
+                clicks_cls, clicks_order = clicks[0][idx], clicks[1][idx]
+
+                ordered_clicks = recover_click_sequence(clicks_cls, clicks_order)
+                for click_idx, oc in enumerate(ordered_clicks):
+                    is_last_click = click_idx == len(ordered_clicks) - 1
+                    click_type = oc["type"]
+                    click_coords = oc["coords"]
+                    self.log(f"   Adding {click_type} click at {click_coords}")
+                    with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
+                        if add_previous_interactions or is_last_click:
+                            # Add the click to the interaction
+                            self.session.add_point_interaction(
+                                click_coords, 
+                                include_interaction=click_type == "fg",
+                                run_prediction=is_last_click, # Only run prediction on the current click
+                            )
+ 
+
+
 
             # get the prediction, add it to the final segmentation map
             results = target_tensor.clone()
             final_segmentation[results != 0] = class_id
 
-        if not self.verbose: # restore stdout
-            sys.stdout = original_stdout
+        
             
         return final_segmentation, time.time() - start_time
     
@@ -559,3 +567,31 @@ class nnInteractiveCorePredictor:
         self.log(f"Prediction completed in {inference_time:.3f} seconds")
         
         return final_segmentation, inference_time
+
+
+def recover_click_sequence(clicks_cls, clicks_order):
+    # Initialize empty list to store clicks in order
+    ordered_clicks = []
+    
+    # Counters to keep track of which click we're at in each category
+    bg_counter = 0
+    fg_counter = 0
+    
+    # Iterate through the clicks_order list
+    for click_type in clicks_order:
+        if click_type == 'bg':
+            # Get the coordinates of the next background click
+            click_coords = clicks_cls['bg'][bg_counter]
+            bg_counter += 1
+        else:  # click_type == 'fg'
+            # Get the coordinates of the next foreground click
+            click_coords = clicks_cls['fg'][fg_counter]
+            fg_counter += 1
+        
+        # Add the coordinates and type to our ordered list
+        ordered_clicks.append({
+            'type': click_type,
+            'coords': click_coords
+        })
+    
+    return ordered_clicks

@@ -23,7 +23,7 @@ from scipy import integrate
 
 # --- Competition Metric Functions (Copied from evaluation script) ---
 from scipy.ndimage import distance_transform_edt
-from src.eval_tools_old import (
+from segfm3d_nora_team.experiments.eval_tools_old import (
     compute_multi_class_dsc,
     compute_multi_class_nsd,
     generate_clicks,
