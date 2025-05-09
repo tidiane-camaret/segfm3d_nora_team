@@ -2,7 +2,7 @@
 
 Repository for our participation in the Interactive 3D Segmentation Challenge (CVPR 2025: Foundation Models for Interactive 3D Biomedical Image Segmentation).
 
-## Evaluation Script
+## Local evaluation Script
 
 This script (`scripts/eval.py`) runs the evaluation protocol locally, mimicking the competition's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
 
@@ -19,10 +19,19 @@ uv run python scripts/eval.py -ca 0 -cl 1 -ncm 1 --no_wandb
 
 ## Methods  
 
-```--method``` tag, either nnint, nnintcore, or sammed3d
+```--method``` tag
+
+```nnint```
+based on the [nnInteractive](https://github.com/MIC-DKFZ/nnInteractive) framework. It uses a pre-trained nnUNet model as the backbone and implements the interactive segmentation process using bounding boxes and clicks.
+
+```nnintcore```
+a simplified version of nnint, using the backbone only, without zoom-in and zoom-out features.
+
+```sammed3d```
+based on the [SAM-Med3D](https://github.com/uni-medical/SAM-Med3D), which is a 3D extension of the Segment Anything Model (SAM). It uses the SAM model as the backbone and implements the interactive segmentation process using bounding boxes and clicks.
 
 ## Submission
-The [evaluation script](CVPR-MedSegFMCompetition/CVPR25_iter_eval.py) is designed to run in a Docker container. If you don't have Docker installed, you can use Singularity as an alternative (see below).
+The official evaluation script is designed to run in a Docker container. If you don't have Docker installed, you can use Singularity as an alternative (see below).
 
 ### Using Docker : 
 
