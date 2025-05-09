@@ -117,6 +117,8 @@ def evaluate(
         return
     print(f"Cases to evaluate: {cases}")
 
+    output_dir = os.path.join(output_dir, method)
+
     os.makedirs(output_dir, exist_ok=True)
     metric = OrderedDict(
         {
@@ -331,10 +333,15 @@ def evaluate(
             metric["NSD_Final"].append(nsd_final)
 
             # Save the metric file to output_dir
-            metric_df = pd.DataFrame(metric)
+            """ 
+            metric_df = pd.DataFrame(metric) -> Error in /software/anaconda3/envs/segfm3d_2/lib/python3.12/site-packages/pandas/core/internals/construction.py, line 677, in _extract_index: All arrays must be of the same length
+            TODO : Look at the dataframe
+            
+            
             metric_df.to_csv(
                 os.path.join(output_dir, "norateam_metrics.csv"), index=False
             )
+            """
 
             if save_segs:
                 np.savez_compressed(
@@ -436,19 +443,32 @@ if __name__ == "__main__":
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Verbose output for clicks etc."
     )
+    parser.add_argument(
+        "--img_dir",
+        default=os.path.join(config["VAL_DIR"], "3D_val_npz"),
+        type=str,
+        help="Path to the validation images",
+    )
+    parser.add_argument(
+        "--gt_dir",
+        default=os.path.join(config["VAL_DIR"], "3D_val_gt_interactive_seg"),
+        type=str,
+        help="Path to the validation ground truth",
+    )
+    parser.add_argument(
+        "--output_dir",
+        default=os.path.join(config["RESULTS_DIR"]),
+        type=str,
+        help="Path to save the results",
+    )
 
     args = parser.parse_args()
 
-    args.val_imgs_path = os.path.join(config["VAL_DIR"], "3D_val_npz")
-    args.validation_gts_path = os.path.join(
-        config["VAL_DIR"], "3D_val_gt_interactive_seg"
-    )
-    args.save_path = os.path.join(config["RESULTS_DIR"], args.method)
 
     evaluate(
         method=args.method,
-        img_dir=args.val_imgs_path,
-        gt_dir=args.validation_gts_path,
+        img_dir=args.img_dir,
+        gt_dir=args.gt_dir,
         output_dir=args.output_dir,
         n_clicks=args.n_clicks,
         n_cases=args.n_cases,
