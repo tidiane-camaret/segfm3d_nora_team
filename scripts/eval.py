@@ -79,11 +79,11 @@ def evaluate(
     ### Load the method ###
 
     if method == "sammed3d":
-        from src.sammed3d import SAMMed3DPredictor
+        from src.methods.sammed3d import SAMMed3DPredictor
 
         predictor = SAMMed3DPredictor(checkpoint_path=config["SAM_CKPT_PATH"])
     elif method == "nnint":
-        from src.nninteractive import nnInteractivePredictor
+        from src.methods.nninteractive import nnInteractivePredictor
 
         predictor = nnInteractivePredictor(
             checkpoint_path=os.path.join(
@@ -93,7 +93,7 @@ def evaluate(
             verbose=verbose,
         )
     elif method == "nnintcore":
-        from src.nninteractive import nnInteractiveCorePredictor
+        from src.methods.nninteractivecore import nnInteractiveCorePredictor
 
         predictor = nnInteractiveCorePredictor(
             checkpoint_path=os.path.join(
@@ -164,7 +164,6 @@ def evaluate(
         dscs = []
         nsds = []
         all_segs = []
-        no_bbox = False
 
         if not os.path.exists(gt_filepath):
             print(f"Warning: Ground truth file not found for {case_name}. Skipping.")
@@ -200,7 +199,6 @@ def evaluate(
                             print(
                                 f"This sample does not use a Bounding Box for the initial iteration {it}"
                             )
-                        no_bbox = True
                         metric_temp["RunningTime_1"] = 0
                         metric_temp["DSC_1"] = 0
                         metric_temp["NSD_1"] = 0
@@ -313,14 +311,26 @@ def evaluate(
                     )
 
             all_segs.append(segs.astype(np.uint8))
-            dsc_auc = integrate.cumulative_trapezoid(
-                np.array(dscs[-n_clicks:]), np.arange(n_clicks)
-            )[
-                -1
-            ]  # AUC is only over the point prompts since the bbox prompt is optional
-            nsd_auc = integrate.cumulative_trapezoid(
-                np.array(nsds[-n_clicks:]), np.arange(n_clicks)
-            )[-1]
+
+            print(f"dscs: {dscs}")
+            print(f"nsds: {nsds}")
+
+            try:
+                dsc_auc = integrate.cumulative_trapezoid(
+                    np.array(dscs[-n_clicks:]), np.arange(n_clicks)
+                )[
+                    -1
+                ]  # AUC is only over the point prompts since the bbox prompt is optional
+                nsd_auc = integrate.cumulative_trapezoid(
+                    np.array(nsds[-n_clicks:]), np.arange(n_clicks)
+                )[-1]
+            except Exception as e:
+                print(
+                    f"Error calculating AUC: {e}. Using last DSC and NSD values instead."
+                )
+                dsc_auc = dscs[-1]
+                nsd_auc = nsds[-1]
+
             dsc_final = dscs[-1]
             nsd_final = nsds[-1]
             for k, v in metric_temp.items():
@@ -399,12 +409,12 @@ if __name__ == "__main__":
         "--method",
         default="nnint",
         type=str,
-        help="method used for segmentation, sammed3d or nnint",
+        help="method used for segmentation"
     )
     parser.add_argument(
         "-o",
         "--output_dir",
-        default="./results",
+        default=os.path.join(config["RESULTS_DIR"]),
         type=str,
         help="Local segmentation and metrics output path",
     )
@@ -455,12 +465,7 @@ if __name__ == "__main__":
         type=str,
         help="Path to the validation ground truth",
     )
-    parser.add_argument(
-        "--output_dir",
-        default=os.path.join(config["RESULTS_DIR"]),
-        type=str,
-        help="Path to save the results",
-    )
+
 
     args = parser.parse_args()
 

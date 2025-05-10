@@ -12,7 +12,7 @@ RUN pip install -e /workspace/nnInteractive
 
 # local depedencies
 RUN mkdir -p /workspace/src
-COPY nninteractive.py /workspace/src/nninteractive.py
+COPY method.py /workspace/src/method.py
 
 ## Copy model and scripts
 COPY model/ /workspace/model/

@@ -12,7 +12,7 @@ To run a quick test on a single case ( `-ca 1`), with only the bounding box iter
 
 ```bash
 # Ensure you are in an environment managed by uv (already present in Meta's workspace : /work/dlclarge2/ndirt-SegFM3D )
-uv run python scripts/eval.py -ca 0 -cl 1 -ncm 1 --no_wandb
+uv run python scripts/eval.py -ca 1 -cl 1 -ncm 1 --no_wandb
 ```
 
 
