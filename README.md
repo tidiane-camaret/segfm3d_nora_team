@@ -39,7 +39,7 @@ The official evaluation script is designed to run in a Docker container. If you 
 ### Building the Docker image
 
 cd docker_context/
-docker build -t nora_team:latest .
+docker build -t norateam:latest .
 
 ### Testing the Docker image on one case (nv : GPU usage)
 # Note : The official script copies the images in a temp directory first. 
@@ -47,11 +47,11 @@ docker build -t nora_team:latest .
 
 cd docker_submission/ 
 
-docker container run --gpus "device=0" -m 32G --name nora_team --rm -v $PWD/test/inputs/:/workspace/inputs/ -v $PWD/test/outputs/:/workspace/outputs/ nora_team:latest /bin/bash -c "sh predict.sh"  
+docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/test/inputs/:/workspace/inputs/ -v $PWD/test/outputs/:/workspace/outputs/ norateam:latest /bin/bash -c "sh predict.sh"  
 
 ### Saving as a tar file
 
-docker save nora_team:latest | gzip > /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission/nora_team.tar.gz
+docker save norateam:latest | gzip > /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission/norateam.tar.gz
 
 ### Evaluating the image using the official script 
 
@@ -65,7 +65,7 @@ python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_ite
 
 # evaluating on the test examples (/nfs/norasys/notebooks/camaret/cvpr25/test_demo)
 cd /nfs/norasys/notebooks/camaret/cvpr25/test_demo
-docker container run --gpus "device=0" -m 32G --name nora_team --rm -v $PWD/imgs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ nora_team:latest /bin/bash -c "sh predict.sh"
+docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/imgs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ norateam:latest /bin/bash -c "sh predict.sh"
 ```
 
 ### Using Singularity : 
