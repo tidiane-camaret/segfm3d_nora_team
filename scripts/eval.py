@@ -21,6 +21,7 @@ import torch
 import wandb
 import yaml
 from scipy import integrate
+from src.config import config
 from src.eval_metrics import (  # TODO : Use the competition repo as source instead
     compute_edt,
     compute_multi_class_dsc,
@@ -30,7 +31,6 @@ from src.eval_metrics import (  # TODO : Use the competition repo as source inst
 from tqdm import tqdm
 
 random.seed(42)
-config = yaml.safe_load(open("config.yaml"))
 
 
 def evaluate(
@@ -405,11 +405,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("Local Interactive Segmentation Evaluation")
     parser.add_argument(
-        "-m",
-        "--method",
-        default="nnint",
-        type=str,
-        help="method used for segmentation"
+        "-m", "--method", default="nnint", type=str, help="method used for segmentation"
     )
     parser.add_argument(
         "-o",
@@ -455,20 +451,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--img_dir",
-        default=os.path.join(config["VAL_DIR"], "3D_val_npz"),
+        default=os.path.join(config["DATA_DIR"], "3D_val_npz"),
         type=str,
         help="Path to the validation images",
     )
     parser.add_argument(
         "--gt_dir",
-        default=os.path.join(config["VAL_DIR"], "3D_val_gt_interactive_seg"),
+        default=os.path.join(config["DATA_DIR"], "3D_val_gt_interactive_seg"),
         type=str,
         help="Path to the validation ground truth",
     )
 
-
     args = parser.parse_args()
-
 
     evaluate(
         method=args.method,
