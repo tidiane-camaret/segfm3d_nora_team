@@ -6,7 +6,7 @@ def detect_machine():
     """Detect which machine we're on based on hostname"""
     hostname = socket.gethostname()
     
-    if "loki" in hostname or "nero" in hostname:
+    if "loki" in hostname or "nero" in hostname or "thor" in hostname:
         return "nora"
     elif "mlgpu" in hostname or "kis3bat" in hostname:
         return "meta"
