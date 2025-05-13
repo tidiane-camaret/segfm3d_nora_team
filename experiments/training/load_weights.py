@@ -1,6 +1,23 @@
 import os 
 import torch
-import nnInteractive
+
+from src.methods.nninteractivecore import nnInteractiveCorePredictor
+from src.config import config
+
+verbose = True
+
+predictor = nnInteractiveCorePredictor(
+    checkpoint_path=os.path.join(
+        config["NNINT_CKPT_DIR"], "nnInteractive_v1.0"
+    ),
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    verbose=verbose,
+)
+
+network = predictor.network
+
+del predictor
+"""
 from nnunetv2.utilities.label_handling.label_handling import determine_num_input_channels
 from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 
@@ -42,6 +59,10 @@ network = trainer_class.build_network_architecture(
 ).to(device)
 network.load_state_dict(parameters)
 
+
+
+
+
 model_info = {
     "model_type": type(network).__name__,
     "model_module": type(network).__module__,
@@ -53,7 +74,7 @@ model_info = {
     "network_arch_init_kwargs": configuration_manager.network_arch_init_kwargs,
     "network_arch_init_kwargs_req_import": configuration_manager.network_arch_init_kwargs_req_import
 }
-
+"""
 print("Model Info:")
 for key, value in model_info.items():
     print(f"{key}: {value}")
