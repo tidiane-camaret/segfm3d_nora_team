@@ -4,7 +4,7 @@ import sys
 import numpy as np
 import torch
 import contextlib
-
+import gc
 from nnInteractive.inference.inference_session import nnInteractiveInferenceSession
 
 
@@ -25,6 +25,9 @@ class nnInteractivePredictor:
 
         self.session.initialize_from_trained_model_folder(checkpoint_path)
         self.verbose = verbose
+        if device == "cuda":
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
     
     def log(self, message):
         """Print message only if verbose mode is enabled."""
@@ -63,91 +66,96 @@ class nnInteractivePredictor:
         
 
         start_time = time.time()
-        self.session.set_image(image[None])
+        with torch.cuda.amp.autocast('cuda',enabled=True):
+            self.session.set_image(image[None])
 
-        # Initialize final prediction array (all classes)
-        final_segmentation = np.zeros_like(image, dtype=np.uint8)
-        target_tensor = torch.zeros(image.shape, dtype=torch.uint8)
-        self.session.set_target_buffer(target_tensor)
+            # Initialize final prediction array (all classes)
+            final_segmentation = np.zeros_like(image, dtype=np.uint8)
+            target_tensor = torch.zeros(image.shape, dtype=torch.uint8)
+            self.session.set_target_buffer(target_tensor)
 
-        # Determine if bbox or click mode, and set number of classes to predict
-        if bboxs is None and clicks is None:
-            self.log("   Warning: No prompts provided. Returning previous prediction.")
-            return prev_pred.copy(), time.time() - start_time
-        elif is_bbox_iteration:
-            num_classes_prompted = len(bboxs)
-            self.log(f"   Mode: BBox, Classes Prompted: {num_classes_prompted}")
-        else:
-            num_classes_prompted = len(clicks[1])
-            self.log(f"   Mode: Clicks, Classes Prompted: {num_classes_prompted}")
-
-
-        # Determine number of classes to process
-        num_classes = (
-            num_classes_prompted
-            if num_classes_max is None
-            else min(num_classes_max, num_classes_prompted)
-        )
-        self.log(f"Processing {num_classes} classes.")
-
-        # Iteration through classes
-        for idx in range(num_classes):
-            self.log(f"image shape: {image.shape}")
-            class_id = idx + 1  # 0 is reserved for background
-            self.log(f"\n--- Processing Class Index: {class_id} ---")
-
-            ### Add the previous interaction
-            self.session.reset_interactions()  # Clears the target buffer and resets interactions
-            self.session.add_initial_seg_interaction(prev_pred==class_id)  # Adds the previous prediction as an interaction
-
-            if is_bbox_iteration:
-                self.log("BBOX ITERATION")
-                bbox = bboxs[idx]
-                z_slice = (
-                    bbox["z_min"] + bbox["z_max"]
-                ) // 2  # TODO : For now, we take the middle slice in the z axis, see if other axis are better. Also, see if changing the overall axis order is better (nnInteractive is designed for XYZ order)
-                BBOX_COORDINATES = [
-                    [z_slice, z_slice + 1],
-                    [bbox["z_mid_y_min"], bbox["z_mid_y_max"]],
-                    [bbox["z_mid_x_min"], bbox["z_mid_x_max"]],
-                ]
-                self.log(f"   BBox coordinates: {BBOX_COORDINATES}")
-                with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext(): # Suppress output
-
-                    self.session.add_bbox_interaction(
-                        BBOX_COORDINATES, include_interaction=True
-                    )
+            # Determine if bbox or click mode, and set number of classes to predict
+            if bboxs is None and clicks is None:
+                self.log("   Warning: No prompts provided. Returning previous prediction.")
+                return prev_pred.copy(), time.time() - start_time
+            elif is_bbox_iteration:
+                num_classes_prompted = len(bboxs)
+                self.log(f"   Mode: BBox, Classes Prompted: {num_classes_prompted}")
+            else:
+                num_classes_prompted = len(clicks[1])
+                self.log(f"   Mode: Clicks, Classes Prompted: {num_classes_prompted}")
 
 
-            else:  # click iteration TODO : Now, we add all click in temporal order, adding 
-                self.log("CLICK ITERATION")
-                clicks_cls, clicks_order = clicks[0][idx], clicks[1][idx]
+            # Determine number of classes to process
+            num_classes = (
+                num_classes_prompted
+                if num_classes_max is None
+                else min(num_classes_max, num_classes_prompted)
+            )
+            self.log(f"Processing {num_classes} classes.")
 
-                ordered_clicks = recover_click_sequence(clicks_cls, clicks_order)
-                for click_idx, oc in enumerate(ordered_clicks):
-                    is_last_click = click_idx == len(ordered_clicks) - 1
-                    click_type = oc["type"]
-                    click_coords = oc["coords"]
-                    self.log(f"   Adding {click_type} click at {click_coords}")
-                    with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
-                        if add_previous_interactions or is_last_click:
-                            # Add the click to the interaction
-                            self.session.add_point_interaction(
-                                click_coords, 
-                                include_interaction=click_type == "fg",
-                                run_prediction=is_last_click, # Only run prediction on the current click
-                            )
- 
+            # Iteration through classes
+            for idx in range(num_classes):
+                self.log(f"image shape: {image.shape}")
+                class_id = idx + 1  # 0 is reserved for background
+                self.log(f"\n--- Processing Class Index: {class_id} ---")
+
+                ### Add the previous interaction
+                self.session.reset_interactions()  # Clears the target buffer and resets interactions
+                self.session.add_initial_seg_interaction(prev_pred==class_id)  # Adds the previous prediction as an interaction
+
+                if is_bbox_iteration:
+                    self.log("BBOX ITERATION")
+                    bbox = bboxs[idx]
+                    z_slice = (
+                        bbox["z_min"] + bbox["z_max"]
+                    ) // 2  # TODO : For now, we take the middle slice in the z axis, see if other axis are better. Also, see if changing the overall axis order is better (nnInteractive is designed for XYZ order)
+                    BBOX_COORDINATES = [
+                        [z_slice, z_slice + 1],
+                        [bbox["z_mid_y_min"], bbox["z_mid_y_max"]],
+                        [bbox["z_mid_x_min"], bbox["z_mid_x_max"]],
+                    ]
+                    self.log(f"   BBox coordinates: {BBOX_COORDINATES}")
+                    with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext(): # Suppress output
+
+                        self.session.add_bbox_interaction(
+                            BBOX_COORDINATES, include_interaction=True
+                        )
+
+
+                else:  # click iteration TODO : Now, we add all click in temporal order, adding 
+                    self.log("CLICK ITERATION")
+                    clicks_cls, clicks_order = clicks[0][idx], clicks[1][idx]
+
+                    ordered_clicks = recover_click_sequence(clicks_cls, clicks_order)
+                    for click_idx, oc in enumerate(ordered_clicks):
+                        is_last_click = click_idx == len(ordered_clicks) - 1
+                        click_type = oc["type"]
+                        click_coords = oc["coords"]
+                        self.log(f"   Adding {click_type} click at {click_coords}")
+                        with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
+                            if add_previous_interactions or is_last_click:
+                                # Add the click to the interaction
+                                self.session.add_point_interaction(
+                                    click_coords, 
+                                    include_interaction=click_type == "fg",
+                                    run_prediction=is_last_click, # Only run prediction on the current click
+                                )
+    
 
 
 
-            # get the prediction, add it to the final segmentation map
-            results = target_tensor.clone()
-            final_segmentation[results != 0] = class_id
+                # get the prediction, add it to the final segmentation map
+                results = target_tensor.clone()
+                final_segmentation[results != 0] = class_id
 
-        
-            
-        return final_segmentation, time.time() - start_time
+                del results
+                torch.cuda.empty_cache()
+                gc.collect()
+
+            self.session._reset_session()
+                
+            return final_segmentation, time.time() - start_time
     
 def recover_click_sequence(clicks_cls, clicks_order):
     # Initialize empty list to store clicks in order

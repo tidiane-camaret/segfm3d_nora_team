@@ -16,10 +16,8 @@ from collections import OrderedDict
 
 import cc3d
 import numpy as np
-import pandas as pd
 import torch
 import wandb
-import yaml
 from scipy import integrate
 from src.config import config
 from src.eval_metrics import (  # TODO : Use the competition repo as source instead
@@ -46,6 +44,7 @@ def evaluate(
     verbose=False,
     save_segs=True,
 ):
+    torch.set_grad_enabled(False)  # Disable gradient calculation for inference
     if save_segs:
         print(
             "Warning: Saving segmentations is enabled. Will take more time and space."

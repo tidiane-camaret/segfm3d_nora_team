@@ -1,5 +1,6 @@
 #!/bin/bash
-# run with sbatch cluster/batch_job.sh
+# run using :
+# sbatch cluster/batch_job.sh
 
 
 #SBATCH -p ml_gpu-rtx2080      # Partition name

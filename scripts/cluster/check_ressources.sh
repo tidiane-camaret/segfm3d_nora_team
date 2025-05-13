@@ -1,5 +1,6 @@
 #!/bin/bash
-# run using srun -p ml_gpu-rtx2080 --pty bash cluster/check_resources.sh
+# run using :
+# srun -p ml_gpu-rtx2080 --pty bash cluster/check_resources.sh
 
 echo "Job ID: $SLURM_JOB_ID"
 echo "Nodes: $SLURM_JOB_NODELIST"

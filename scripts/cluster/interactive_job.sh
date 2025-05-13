@@ -1,5 +1,6 @@
 #!/bin/bash
-# run with bash cluster/interactive_job.sh
+# run using : 
+# bash cluster/interactive_job.sh
 
 #typical ressources for an interactive job
 # 1 GPU, 16 CPU, 64GB RAM, 48h
