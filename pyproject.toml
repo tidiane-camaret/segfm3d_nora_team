@@ -16,6 +16,7 @@ dependencies = [
     "opencv-python-headless>=4.11.0.86",
     "pandas>=2.2.3",
     "prefetch-generator>=1.0.3",
+    "pytorch-lightning>=2.5.1.post0",
     "scipy>=1.15.2",
     "surface-distance",
     "torchio>=0.20.6",
