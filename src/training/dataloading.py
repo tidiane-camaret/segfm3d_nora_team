@@ -107,63 +107,32 @@ class SimpleInteractiveSegmentationDataset(Dataset):
         # Get unique classes in the ground truth
         unique_classes = np.unique(gts)
         unique_classes = unique_classes[unique_classes > 0]  # Exclude background
-        num_classes = len(unique_classes)
-        
-        # If no bounding boxes are provided, generate them from ground truth
-        if boxes is None:
-            boxes = []
-            for class_id in unique_classes:
-                # Find where this class exists in the mask
-                class_mask = (gts == class_id)
-                
-                # Get bounding box coordinates
-                z_indices, y_indices, x_indices = np.where(class_mask)
-                
-                if len(z_indices) == 0:
-                    continue  # Skip if class not present
-                    
-                z_min, z_max = np.min(z_indices), np.max(z_indices)
-                y_min, y_max = np.min(y_indices), np.max(y_indices)
-                x_min, x_max = np.min(x_indices), np.max(x_indices)
-                
-                # Create bbox dictionary
-                bbox = {
-                    'class_id': int(class_id),
-                    'z_min': z_min,
-                    'z_max': z_max,
-                    'y_min': y_min,
-                    'y_max': y_max,
-                    'x_min': x_min,
-                    'x_max': x_max,
-                    'z_mid': (z_min + z_max) // 2  # Middle slice for 2D option
-                }
-                
-                boxes.append(bbox)
-        
+         
+        # pick a random class 
+        class_id = np.random.choice(unique_classes) if len(unique_classes) > 0 else 0
 
-        # Create input tensor with image and bounding box channels
-        # For simplicity, we'll use 1 channel for image and 1 channel for each bbox
-        # Shape: [1+num_classes, Z, Y, X]
-        
-
+        gts = (gts == class_id)# Binary mask for the selected class
         
         # Create bbox channels (one for each class)
-        bbox_channels = []
-        for box in boxes:
-            bbox_channel = self._create_bbox_channel(image.shape, box)
-            bbox_channels.append(bbox_channel)
-        
-        # If there are fewer classes than expected, pad with zeros
-        while len(bbox_channels) < 7:  # Assuming maximum 6 classes as in your metrics
-            bbox_channels.append(np.zeros_like(image))
+        prompt_channels = []
+        try:
+            bbox_channel = self._create_bbox_channel(image.shape, boxes[class_id - 1])
+        except :
+            bbox_channel = np.zeros_like(image)  # No bounding box available
 
-        image, gts, bbox_channels = crop_to_fixed_size(
-        image, gts, bbox_channels, target_size=(192, 192, 192)  # Example target size
+        prompt_channels.append(bbox_channel)
+        
+        # just set the rest of the channels to zero for now
+        while len(prompt_channels) < 7:  # Assuming maximum 6 classes as in your metrics
+            prompt_channels.append(np.zeros_like(image))
+
+        image, gts, prompt_channels = crop_to_fixed_size(
+        image, gts, prompt_channels, target_size=(192, 192, 192)  # Example target size
         )
         
         
         # Combine all channels
-        input_tensor = np.concatenate([image[np.newaxis]] + [ch[np.newaxis] for ch in bbox_channels[:7]], axis=0)
+        input_tensor = np.concatenate([image[np.newaxis]] + [ch[np.newaxis] for ch in prompt_channels[:7]], axis=0)
         
         # Convert to torch tensors
         input_tensor = torch.from_numpy(input_tensor).float()
@@ -174,7 +143,7 @@ class SimpleInteractiveSegmentationDataset(Dataset):
             'gt': gt_tensor,        # Ground truth segmentation
             #'case_name': case_name,
             #'boxes': boxes,
-            #'spacing': spacing,
+            'spacing': spacing,
             #'num_classes': num_classes
         }
 

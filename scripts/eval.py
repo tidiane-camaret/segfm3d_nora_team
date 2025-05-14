@@ -200,7 +200,13 @@ def evaluate(
                 print(
                     f"Warning: One of the dims is > 1000 for {case_name}. shape : {image.shape}. Skipping because of memory constraints. Seg segs = 0"
                 )
-                continue
+                if save_segs:
+                    np.savez_compressed(
+                        os.path.join(output_dir, case_name),
+                        segs=segs,
+                        all_segs=[segs],  # store all intermediate predictions
+                    )
+
 
             ### Initialize interaction objects and metrics ###
             unique_gts = np.sort(np.unique(gts))

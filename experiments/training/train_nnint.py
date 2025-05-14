@@ -1,4 +1,5 @@
 import os
+import scipy as sp
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
@@ -10,8 +11,11 @@ from torch.utils.data import DataLoader
 from src.methods.nninteractivecore import nnInteractiveCorePredictor
 from src.config import config
 from src.training.dataloading import SimpleInteractiveSegmentationDataset #, custom_collate_fn
-
-
+from src.training.loss import DiceLoss
+from src.eval_metrics import (  # TODO : Use the competition repo as source instead
+    compute_multi_class_dsc,
+    compute_multi_class_nsd,
+)
 class InteractiveSegmentationModel(pl.LightningModule):
     def __init__(self, checkpoint_path, learning_rate=1e-4, weight_decay=1e-5):
         super().__init__()
@@ -41,7 +45,7 @@ class InteractiveSegmentationModel(pl.LightningModule):
         for i in range(len(inputs)):
             # Forward pass
             outputs = self.network(inputs[i].unsqueeze(0))
-            
+
             # Compute loss
             loss = self.criterion(outputs, targets[i].unsqueeze(0))
             
@@ -63,23 +67,40 @@ class InteractiveSegmentationModel(pl.LightningModule):
         # Process each item in the batch separately
         inputs = batch['input']
         targets = batch['gt']
+        spacing = batch['spacing']
         
         total_loss = 0
+        total_dsc = 0
+        total_nsd = 0
         for i in range(len(inputs)):
             # Forward pass
             outputs = self.network(inputs[i].unsqueeze(0))
-            
             # Compute loss
             loss = self.criterion(outputs, targets[i].unsqueeze(0))
+            output_masks = outputs.argmax(dim=1).cpu().numpy().squeeze(0)
+            dsc = compute_multi_class_dsc(output_masks, targets[i].cpu().numpy())
+            # compute nsd
+            if dsc > 0.2:
+                # only compute nsd when dice > 0.2 because NSD is also low when dice is too low
+
+                nsd = compute_multi_class_nsd(output_masks, targets[i].cpu().numpy(), spacing[i].cpu().numpy())
+            else:
+                nsd = 0.0  # Assume model performs poor on this sample
             
             # Track loss
             total_loss += loss
+            total_dsc += dsc
+            total_nsd += nsd
         
         # Calculate average loss
         avg_loss = total_loss / len(inputs)
+        avg_dsc = total_dsc / len(inputs)
+        avg_nsd = total_nsd / len(inputs)
         
         # Log metrics
         self.log("val_loss", avg_loss, prog_bar=True)
+        self.log("val_dsc", avg_dsc, prog_bar=True)
+        self.log("val_nsd", avg_nsd, prog_bar=True)
         
         return avg_loss
     
@@ -182,7 +203,7 @@ def train_model():
     
     # Set up callbacks
     checkpoint_callback = ModelCheckpoint(
-        dirpath="checkpoints",
+        dirpath="/nfs/norasys/notebooks/camaret/model_checkpoints/nnint/finetuned",
         filename="{epoch}-{val_loss:.4f}",
         save_top_k=3,
         monitor="val_loss",
@@ -197,8 +218,8 @@ def train_model():
         max_epochs=50,
         accelerator="gpu",
         devices="auto",  # Use all available GPUs
-        strategy=DDPStrategy(find_unused_parameters=False),
-        logger=wandb_logger,
+        strategy=DDPStrategy(find_unused_parameters=True),
+        #logger=wandb_logger,
         callbacks=[checkpoint_callback, lr_monitor],
         precision=16,  # Use mixed precision for faster training
         log_every_n_steps=10
