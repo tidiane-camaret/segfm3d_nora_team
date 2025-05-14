@@ -91,7 +91,17 @@ def evaluate(
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             verbose=verbose,
         )
-    elif method == "nnintcore":
+    elif method == "nnint_pretrained":
+        from src.methods.nninteractive import nnInteractivePredictor
+
+        predictor = nnInteractivePredictor(
+            checkpoint_path=os.path.join(
+                config["NNINT_CKPT_DIR"], "may_25/nnInteractiveTrainer_CVPR2025"
+            ),
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            verbose=verbose,
+        )
+    elif method == "nnint_core":
         from src.methods.nninteractivecore import nnInteractiveCorePredictor
 
         predictor = nnInteractiveCorePredictor(
@@ -267,7 +277,7 @@ def evaluate(
 
                 ### Model prediction ###
 
-                segs, infer_time = predictor.predict(
+                segs, prediction_metrics = predictor.predict(
                     image=image,
                     spacing=spacing,
                     bboxs=boxes,
@@ -279,8 +289,8 @@ def evaluate(
 
                 ### Computing Metrics
 
-                real_running_time += infer_time
-                metric_temp[f"RunningTime_{it + 1}"] = infer_time
+                real_running_time += prediction_metrics["infer_time"]
+                metric_temp[f"RunningTime_{it + 1}"] = prediction_metrics["infer_time"]
 
                 dsc = compute_multi_class_dsc(gts, segs)
                 # compute nsd
@@ -306,6 +316,7 @@ def evaluate(
                                 if f"RunningTime_{it + 1}" in metric_temp
                                 else 0
                             ),
+                            "Forward pass count": prediction_metrics["forward_pass_count"]
                         }
                     )
 

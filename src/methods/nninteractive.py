@@ -6,28 +6,38 @@ import torch
 import contextlib
 import gc
 from nnInteractive.inference.inference_session import nnInteractiveInferenceSession
+from nnunetv2.utilities.helpers import empty_cache
 
 
 class nnInteractivePredictor:
     """
     Predictor class using nnInteractive "as is".
     """
+    
 
     def __init__(self, checkpoint_path, device, do_autozoom=True, verbose=True):
+        try : 
+            cores = int(os.environ['SLURM_CPUS_ON_NODE'])
+        except KeyError:
+            print("No SLURM environment variable found for cpu nb. Setting to os.cpu_count()")
+            cores = int(os.cpu_count())
+        cores_used = max(4, cores - 4)
+        print(f"{cores} CPU cores avaiables")
+        print(f"Using {cores_used} CPU cores for inference.")
         self.session = nnInteractiveInferenceSession(
             device=device,  # Set inference device
             use_torch_compile=False,  # Experimental: Not tested yet
             verbose=verbose,
-            torch_n_threads=os.cpu_count(),  # Use available CPU cores
+            torch_n_threads=cores_used,  # Use available CPU cores
             do_autozoom=do_autozoom,  # Enables AutoZoom for better patching
             use_pinned_memory=True,  # Optimizes GPU memory transfers
         )
 
         self.session.initialize_from_trained_model_folder(checkpoint_path)
         self.verbose = verbose
-        if device == "cuda":
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+        self.session.verbose = verbose
+        self.device = device
+            
     
     def log(self, message):
         """Print message only if verbose mode is enabled."""
@@ -66,12 +76,12 @@ class nnInteractivePredictor:
         
 
         start_time = time.time()
-        with torch.cuda.amp.autocast('cuda',enabled=True):
-            self.session.set_image(image[None])
+        with torch.autocast(device_type=str(self.device)):
+            self.session.set_image(image[None].astype(np.float32))
 
             # Initialize final prediction array (all classes)
             final_segmentation = np.zeros_like(image, dtype=np.uint8)
-            target_tensor = torch.zeros(image.shape, dtype=torch.uint8)
+            target_tensor = torch.zeros(image.shape, dtype=torch.uint8, device='cpu')
             self.session.set_target_buffer(target_tensor)
 
             # Determine if bbox or click mode, and set number of classes to predict
@@ -102,7 +112,7 @@ class nnInteractivePredictor:
 
                 ### Add the previous interaction
                 self.session.reset_interactions()  # Clears the target buffer and resets interactions
-                self.session.add_initial_seg_interaction(prev_pred==class_id)  # Adds the previous prediction as an interaction
+                self.session.add_initial_seg_interaction((prev_pred==class_id).astype(np.uint8), run_prediction=False)  # Adds the previous prediction as an interaction
 
                 if is_bbox_iteration:
                     self.log("BBOX ITERATION")
@@ -119,7 +129,7 @@ class nnInteractivePredictor:
                     with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext(): # Suppress output
 
                         self.session.add_bbox_interaction(
-                            BBOX_COORDINATES, include_interaction=True
+                            BBOX_COORDINATES, include_interaction=True, run_prediction=False
                         )
 
 
@@ -139,23 +149,30 @@ class nnInteractivePredictor:
                                 self.session.add_point_interaction(
                                     click_coords, 
                                     include_interaction=click_type == "fg",
-                                    run_prediction=is_last_click, # Only run prediction on the current click
+                                    run_prediction=False, 
                                 )
     
 
-
-
+                self.session.verbose = self.verbose
+                self.session.new_interaction_centers = [self.session.new_interaction_centers[-1]]
+                self.session.new_interaction_zoom_out_factors = [self.session.new_interaction_zoom_out_factors[-1]]
+                self.session._predict()
+                forward_pass_count = self.session.forward_pass_count
                 # get the prediction, add it to the final segmentation map
-                results = target_tensor.clone()
-                final_segmentation[results != 0] = class_id
 
-                del results
-                torch.cuda.empty_cache()
+                final_segmentation[target_tensor != 0] = class_id
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+                    torch.cuda.reset_peak_memory_stats()
+                    empty_cache(torch.device('cuda', 0))
                 gc.collect()
 
             self.session._reset_session()
+
+            prediction_metrics = {"infer_time": time.time() - start_time,
+                    "forward_pass_count": forward_pass_count}
                 
-            return final_segmentation, time.time() - start_time
+            return final_segmentation, prediction_metrics
     
 def recover_click_sequence(clicks_cls, clicks_order):
     # Initialize empty list to store clicks in order

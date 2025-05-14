@@ -51,8 +51,7 @@ def compute_edt(error_component):
     crop_shape = max_coords - min_coords
 
     # Compute padding (25% of crop size in each dimension)
-    padding =  np.maximum((crop_shape * 0.25).astype(int), 1)
-
+    padding = np.maximum((crop_shape * 0.25).astype(int), 1)
 
     # Define new padded shape
     padded_shape = crop_shape + 2 * padding
@@ -79,16 +78,57 @@ def compute_edt(error_component):
         large_roi = True
 
     # Compute EDT on the padded array
-    if torch.cuda.is_available() and not large_roi: # GPU available
+    if torch.cuda.is_available() and not large_roi:  # GPU potentially available
         import cupy as cp
         from cucim.core.operations import morphology
-        error_mask_cp = cp.array(center_crop)
-        edt_cp = morphology.distance_transform_edt(error_mask_cp, return_distances=True)
-        edt = cp.asnumpy(edt_cp)
-    else: # CPU available only
+        
+        # Get number of available GPUs
+        num_gpus = torch.cuda.device_count()
+        
+        # Estimate memory needed for the operation (this is approximate)
+        array_size_bytes = center_crop.size * center_crop.itemsize
+        # EDT typically needs ~3x the input array size (input, output, workspace)
+        required_memory = array_size_bytes * 3
+        
+        gpu_success = False
+        
+        # Try GPUs in order
+        for gpu_id in range(num_gpus):
+            try:
+                # Get free memory in bytes
+                torch.cuda.set_device(gpu_id)
+                free_memory = torch.cuda.mem_get_info(gpu_id)[0]
+                
+                print(f"GPU {gpu_id} has {free_memory / (1024**3):.2f} GB free memory")
+                
+                if free_memory > required_memory:
+                    try:
+                        # Set CuPy to use this GPU
+                        with cp.cuda.Device(gpu_id):
+                            print(f"Using GPU {gpu_id} for EDT calculation")
+                            error_mask_cp = cp.array(center_crop)
+                            edt_cp = morphology.distance_transform_edt(error_mask_cp, return_distances=True)
+                            edt = cp.asnumpy(edt_cp)
+                            gpu_success = True
+                            break
+                    except Exception as e:
+                        print(f"Error using GPU {gpu_id}: {e}")
+                        # Continue to next GPU
+                else:
+                    print(f"GPU {gpu_id} doesn't have enough memory ({required_memory / (1024**3):.2f} GB needed)")
+            except Exception as e:
+                print(f"Error checking memory on GPU {gpu_id}: {e}")
+        
+        # If no GPU worked, fall back to CPU
+        if not gpu_success:
+            print("Falling back to CPU for EDT calculation")
+            edt = distance_transform_edt(center_crop)
+    else:
+        # CPU only (either no CUDA or large_roi)
+        print("Using CPU for EDT calculation" + (" (large ROI)" if large_roi else ""))
         edt = distance_transform_edt(center_crop)
     
-    if large_roi: # upsample
+    if large_roi:  # upsample
         edt = edt.repeat(2, axis=0).repeat(2, axis=1).repeat(2, axis=2)
 
     # Crop out the center (remove padding)
