@@ -99,13 +99,13 @@ def compute_edt(error_component):
                 torch.cuda.set_device(gpu_id)
                 free_memory = torch.cuda.mem_get_info(gpu_id)[0]
                 
-                print(f"GPU {gpu_id} has {free_memory / (1024**3):.2f} GB free memory")
+                #print(f"GPU {gpu_id} has {free_memory / (1024**3):.2f} GB free memory")
                 
                 if free_memory > required_memory:
                     try:
                         # Set CuPy to use this GPU
                         with cp.cuda.Device(gpu_id):
-                            print(f"Using GPU {gpu_id} for EDT calculation")
+                            #print(f"Using GPU {gpu_id} for EDT calculation")
                             error_mask_cp = cp.array(center_crop)
                             edt_cp = morphology.distance_transform_edt(error_mask_cp, return_distances=True)
                             edt = cp.asnumpy(edt_cp)

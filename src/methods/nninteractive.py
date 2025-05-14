@@ -156,7 +156,8 @@ class nnInteractivePredictor:
                 self.session.verbose = self.verbose
                 self.session.new_interaction_centers = [self.session.new_interaction_centers[-1]]
                 self.session.new_interaction_zoom_out_factors = [self.session.new_interaction_zoom_out_factors[-1]]
-                self.session._predict()
+                with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
+                    self.session._predict()
                 forward_pass_count = self.session.forward_pass_count
                 # get the prediction, add it to the final segmentation map
 

@@ -115,8 +115,15 @@ def evaluate(
         raise ValueError(f"Unknown method: {method}.")
 
     ### List cases (npz files) ###
-
+    output_dir = os.path.join(output_dir, method)
+    
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
+
+    processed_cases = sorted([f for f in os.listdir(output_dir) if f.endswith(".npz")])
+    remaining_cases = sorted(list(set(cases) - set(processed_cases)))
+
+    cases = remaining_cases
+
     if n_cases > 0:
         cases = random.sample(
             cases, min(n_cases, len(cases))
@@ -124,9 +131,7 @@ def evaluate(
     if len(cases) == 0:
         print("No cases found in the input directory.")
         return
-    print(f"Cases to evaluate: {cases}")
-
-    output_dir = os.path.join(output_dir, method)
+    print(f"Cases to evaluate: {len(cases)}")
 
     os.makedirs(output_dir, exist_ok=True)
     metric = OrderedDict(
@@ -163,6 +168,7 @@ def evaluate(
     ### Loop through cases ###
 
     for case_filename in tqdm(cases, desc="Evaluating Cases"):
+        print(f"Evaluating case: {case_filename}")
 
         case_name = os.path.splitext(case_filename)[0]
         input_filepath = os.path.join(img_dir, case_filename)
@@ -188,6 +194,14 @@ def evaluate(
             gts = gt_data["gts"]
             boxes = data.get("boxes", None)
 
+            segs = np.zeros_like(gts, dtype=np.uint8)  # Initialize with zeros
+
+            if np.any(np.array(image.shape) > 1000):
+                print(
+                    f"Warning: One of the dims is > 1000 for {case_name}. shape : {image.shape}. Skipping because of memory constraints. Seg segs = 0"
+                )
+                continue
+
             ### Initialize interaction objects and metrics ###
             unique_gts = np.sort(np.unique(gts))
             n_classes = len(unique_gts) - 1  # Exclude background class 0
@@ -197,7 +211,6 @@ def evaluate(
             clicks_order = [[] for _ in range(n_classes)]
 
             # Initialize segmentation
-            segs = np.zeros_like(gts, dtype=np.uint8)  # Initialize with zeros
 
             for it in range(n_clicks + 1):  # + 1 due to bbox pred at iteration 0
 
@@ -322,8 +335,6 @@ def evaluate(
 
             all_segs.append(segs.astype(np.uint8))
 
-            print(f"dscs: {dscs}")
-            print(f"nsds: {nsds}")
 
             try:
                 dsc_auc = integrate.cumulative_trapezoid(
@@ -405,9 +416,8 @@ def evaluate(
                 )
 
         except Exception as e:
-            tb = traceback.extract_tb(sys.exc_info()[2])
-            file_name, line_number, func_name, text = tb[-1]
-            print(f"Error in {file_name}, line {line_number}, in {func_name}: {e}")
+            traceback.print_exc()
+            print(f"Error message: {e}")
 
 
 # --- Argparse and Execution ---
