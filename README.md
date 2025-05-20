@@ -73,13 +73,13 @@ docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/imgs/
 
 ```bash
 # Convert the Docker image to a Singularity image
-singularity build docker_images/baselines/sammed3d_baseline.sif docker-archive://docker_images/baselines/sammed3d_baseline.tar
+singularity build docker_images/baselines/nninteractive_alldata.sif docker-archive://docker_images/baselines/nninteractive_alldata.tar
 
 # Test the Singularity image (nv : GPU usage)
-singularity shell --nv docker_images/baselines/sammed3d_baseline.sif
+singularity shell --nv docker_images/baselines/nninteractive_alldata.sif
 
 # bind the input and output directories
-singularity shell --nv -B $PWD/data:/workspace/inputs,$PWD/results/sammed3d:/workspace/outputs  docker_images/baselines/sammed3d_baseline.sif 
+singularity shell --nv -B $PWD/data:/workspace/inputs,$PWD/results/sammed3d:/workspace/outputs  docker_images/baselines/singularity/nninteractive_alldata.sif 
 
 
 #Then sh predict.sh
@@ -98,6 +98,10 @@ else:
     cmd = 'singularity run -B $PWD/inputs/:/workspace/inputs/,$PWD/outputs/:/workspace/outputs/ {}.sif /bin/bash -c "sh predict.sh"'.format(teamname)
 ```
 Also, remove Remove "docker image load" and "docker rmi" commands from the script.
+
+```bash
+python ../scripts/CVPR25_iter_eval_singularity.py --docker_folder ../docker_images/baselines/singularity --test_img_path ../data/3D_val_npz --save_path ../results/nnint_alldata_baseline --validation_gts_path ../data/3D_val_gt_interactive_seg --verbose
+```
 
 #### Building Docker images from Singularity
 

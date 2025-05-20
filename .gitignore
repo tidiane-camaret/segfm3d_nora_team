@@ -10,6 +10,7 @@
 /docker_context/model
 /docker_submission/data
 /docker_submission/outputs
+/singularity_submission/inputs
 __pycache__
 config.yaml
 cufile.log

@@ -9,7 +9,7 @@ srun -p ml_gpu-rtx2080 \
      --nodes=1 \
      --ntasks=1 \
      --cpus-per-task=16 \
-     --gres=gpu:1 \
-     --mem=64G \
-     --time=48:00:00 \
+     --gres=gpu:2 \
+     --mem=32G \
+     --time=20:00:00 \
      --pty bash

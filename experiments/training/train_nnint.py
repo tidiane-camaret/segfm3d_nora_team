@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from src.methods.nninteractivecore import nnInteractiveCorePredictor
 from src.config import config
-from src.training.dataloading import SimpleInteractiveSegmentationDataset #, custom_collate_fn
+from src.training.dataloading import SimpleInteractiveSegmentationDataset , custom_collate_fn
 from src.training.loss import DiceLoss
 from src.eval_metrics import (  # TODO : Use the competition repo as source instead
     compute_multi_class_dsc,
@@ -98,9 +98,9 @@ class InteractiveSegmentationModel(pl.LightningModule):
         avg_nsd = total_nsd / len(inputs)
         
         # Log metrics
-        self.log("val_loss", avg_loss, prog_bar=True)
-        self.log("val_dsc", avg_dsc, prog_bar=True)
-        self.log("val_nsd", avg_nsd, prog_bar=True)
+        self.log("val_loss", avg_loss, prog_bar=True, sync_dist=True)
+        self.log("val_dsc", avg_dsc, prog_bar=True, sync_dist=True)
+        self.log("val_nsd", avg_nsd, prog_bar=True, sync_dist=True)
         
         return avg_loss
     
@@ -158,7 +158,7 @@ class InteractiveSegmentationDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            #collate_fn=custom_collate_fn,
+            collate_fn=custom_collate_fn,
             pin_memory=True
         )
     
@@ -168,7 +168,7 @@ class InteractiveSegmentationDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            #collate_fn=custom_collate_fn,
+            collate_fn=custom_collate_fn,
             pin_memory=True
         )
 
@@ -183,8 +183,8 @@ def train_model():
     data_module = InteractiveSegmentationDataModule(
         img_dir=img_dir,
         gt_dir=gt_dir,
-        batch_size=2,
-        num_workers=4
+        batch_size=1,
+        num_workers=10
     )
     
     # Initialize model
@@ -219,7 +219,7 @@ def train_model():
         accelerator="gpu",
         devices="auto",  # Use all available GPUs
         strategy=DDPStrategy(find_unused_parameters=True),
-        #logger=wandb_logger,
+        logger=wandb_logger,
         callbacks=[checkpoint_callback, lr_monitor],
         precision=16,  # Use mixed precision for faster training
         log_every_n_steps=10

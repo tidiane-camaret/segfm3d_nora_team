@@ -141,10 +141,9 @@ class SimpleInteractiveSegmentationDataset(Dataset):
         return {
             'input': input_tensor,  # Combined image and bbox channels
             'gt': gt_tensor,        # Ground truth segmentation
-            #'case_name': case_name,
-            #'boxes': boxes,
+            'case_name': case_name,
+            'boxes': boxes,
             'spacing': spacing,
-            #'num_classes': num_classes
         }
 
 
@@ -161,8 +160,6 @@ def custom_collate_fn(batch):
     case_names = [item['case_name'] for item in batch]
     boxes = [item['boxes'] for item in batch]
     spacings = [item['spacing'] for item in batch]
-    num_classes = [item['num_classes'] for item in batch]
-    shapes = [item['shape'] for item in batch]
     
     # Return a dictionary of lists instead of trying to batch tensors
     return {
@@ -171,9 +168,7 @@ def custom_collate_fn(batch):
         'case_name': case_names,
         'boxes': boxes,
         'spacing': spacings,
-        'num_classes': num_classes,
-        'shape': shapes
-    }
+
 
 
 
