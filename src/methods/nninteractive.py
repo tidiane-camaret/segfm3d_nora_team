@@ -136,6 +136,7 @@ class nnInteractivePredictor:
                 else:  # click iteration TODO : Now, we add all click in temporal order, adding 
                     self.log("CLICK ITERATION")
                     clicks_cls, clicks_order = clicks[0][idx], clicks[1][idx]
+                    #print("clicks_cls : ", clicks_cls)
 
                     ordered_clicks = recover_click_sequence(clicks_cls, clicks_order)
                     for click_idx, oc in enumerate(ordered_clicks):

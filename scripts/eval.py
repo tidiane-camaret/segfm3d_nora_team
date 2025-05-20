@@ -91,16 +91,7 @@ def evaluate(
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             verbose=verbose,
         )
-    elif method == "nnint_pretrained":
-        from src.methods.nninteractive import nnInteractivePredictor
 
-        predictor = nnInteractivePredictor(
-            checkpoint_path=os.path.join(
-                config["NNINT_CKPT_DIR"], "may_25/nnInteractiveTrainer_CVPR2025"
-            ),
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-            verbose=verbose,
-        )
     elif method == "nnint_core":
         from src.methods.nninteractivecore import nnInteractiveCorePredictor
 
@@ -111,6 +102,16 @@ def evaluate(
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             verbose=verbose,
         )
+    elif method == "nnint_orig":
+        from src.methods.nninteractiveorig import nnInteractiveOrigPredictor
+
+        predictor = nnInteractiveOrigPredictor(
+        checkpoint_path=os.path.join(
+            config["NNINT_CKPT_DIR"], "may_25/nnInteractiveTrainer_CVPR2025"
+        ),
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        verbose=verbose,
+    )
     else:
         raise ValueError(f"Unknown method: {method}.")
 
@@ -118,18 +119,19 @@ def evaluate(
     output_dir = os.path.join(output_dir, method)
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
-
+    """
     processed_cases = sorted([f for f in os.listdir(output_dir) if f.endswith(".npz")])
     remaining_cases = sorted(list(set(cases) - set(processed_cases)))
 
     cases = remaining_cases
-
+    """
     if n_cases > 0:
         cases = random.sample(
             cases, min(n_cases, len(cases))
         )  # sample cases, reproduceable
     if len(cases) == 0:
         print("No cases found in the input directory.")
+        print(img_dir)
         return
     print(f"Cases to evaluate: {len(cases)}")
 
