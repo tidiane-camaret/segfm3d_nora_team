@@ -113,7 +113,7 @@ class nnInteractiveOrigPredictor:
                 else:
                     self.session.reset_interactions()
 
-                if (bboxs is not None) and is_bbox_iteration:
+                if (bboxs is not None):
                     bbox_here = bboxs[oid - 1]
                     bbox_here = [
                         [bbox_here['z_min'], bbox_here['z_max'] + 1],
@@ -123,30 +123,30 @@ class nnInteractiveOrigPredictor:
                 
                     with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext(): # Suppress output
                         self.log(f"   BBox coordinates: {bbox_here}")
-                        self.session.add_bbox_interaction(bbox_here, include_interaction=True, run_prediction=False)
+                        if is_bbox_iteration or add_previous_interactions:
+                            self.session.add_bbox_interaction(bbox_here, include_interaction=True, run_prediction=False)
 
 
-                else:  # click iteration TODO : Now, we add all click in temporal order, adding 
-                    self.log("CLICK ITERATION")
-                    if clicks is not None:
+                self.log("CLICK ITERATION")
+                if clicks is not None:
 
-                        clicks_here = clicks[oid - 1]
-                        clicks_order_here = clicks_order[oid - 1]
-                        fg_ptr = bg_ptr = 0
-                        
-                        for i_click, kind in enumerate(clicks_order_here):
-                            if kind == 'fg':
-                                click = clicks_here['fg'][fg_ptr]
-                                fg_ptr += 1
-                            else:
-                                click = clicks_here['bg'][bg_ptr]
-                                bg_ptr += 1
+                    clicks_here = clicks[oid - 1]
+                    clicks_order_here = clicks_order[oid - 1]
+                    fg_ptr = bg_ptr = 0
+                    
+                    for i_click, kind in enumerate(clicks_order_here):
+                        if kind == 'fg':
+                            click = clicks_here['fg'][fg_ptr]
+                            fg_ptr += 1
+                        else:
+                            click = clicks_here['bg'][bg_ptr]
+                            bg_ptr += 1
 
-                            print(f"Class {oid}: {kind} click at {click}")
-                            is_last_click = i_click == (len(clicks_order_here) - 1)
-                            with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
-                                if add_previous_interactions or is_last_click:
-                                    self.session.add_point_interaction(click, include_interaction=kind == 'fg', run_prediction=False)
+                        #print(f"Class {oid}: {kind} click at {click}")
+                        is_last_click = i_click == (len(clicks_order_here) - 1)
+                        with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
+                            if add_previous_interactions or is_last_click:
+                                self.session.add_point_interaction(click, include_interaction=kind == 'fg', run_prediction=False)
 
                     #clicks_cls, clicks_order = clicks[0][oid - 1], clicks[1][oid - 1]
 
