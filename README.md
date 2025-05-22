@@ -76,7 +76,7 @@ docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/imgs/
 singularity build docker_images/baselines/nninteractive_alldata.sif docker-archive://docker_images/baselines/nninteractive_alldata.tar
 
 # Test the Singularity image (nv : GPU usage)
-singularity shell --nv docker_images/baselines/nninteractive_alldata.sif
+singularity shell --nv docker_images/baselines/singularity/nninteractive_alldata.sif
 
 # bind the input and output directories
 singularity shell --nv -B $PWD/data:/workspace/inputs,$PWD/results/sammed3d:/workspace/outputs  docker_images/baselines/singularity/nninteractive_alldata.sif 

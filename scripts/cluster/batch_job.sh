@@ -13,7 +13,7 @@
 #SBATCH --mem=32G              # Memory per node
 #SBATCH --gres=gpu:1           # GPUs per node
 #SBATCH --time=20:00:00         # Time limit
-#SBATCH --job-name=segfm3d_nnint      # Job name
+#SBATCH --job-name=segfm3d_nnintorig      # Job name
 #SBATCH --output=results/cluster/job_%j.out    # Standard output file (%j will be replaced by job ID)
 #SBATCH --error=results/cluster/job_%j.err     # Standard error file
 
@@ -23,6 +23,6 @@ echo "Running on node: $(hostname)"
 
 cd /work/dlclarge2/ndirt-SegFM3D/segfm3d_nora_team
 
-uv run scripts/eval.py --save_segs -ca 0
+uv run python scripts/eval.py -ca 0 -m nnint_orig --save_segs
 
 echo "Job finished at $(date)"
