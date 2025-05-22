@@ -112,6 +112,16 @@ def evaluate(
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose=verbose,
     )
+    elif method == "nnint_custom":
+        from src.methods.nninteractiveorig import nnInteractiveOrigPredictor
+
+        predictor = nnInteractiveOrigPredictor(
+        checkpoint_path=os.path.join(
+            config["DATA_DIR"], "nnUNet_results/Dataset002_CT_Abdomen1K/CustomTrainer__nnUNetResEncUNetLPlans_noResampling__3d_fullres_ps192_bs1"
+        ),
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        verbose=verbose,
+    )
     else:
         raise ValueError(f"Unknown method: {method}.")
 
