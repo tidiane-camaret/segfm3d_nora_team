@@ -43,6 +43,7 @@ def evaluate(
     wandb_project="segfm3d_nora_team",
     verbose=False,
     save_segs=True,
+    checkpoint_path=None,  # used in nnint_custom
 ):
     torch.set_grad_enabled(False)  # Disable gradient calculation for inference
     if save_segs:
@@ -62,6 +63,7 @@ def evaluate(
                 "evaluation_mode": "local_script",
                 "gpu_available": torch.cuda.is_available(),
                 "method": method,
+                "checkpoint_name": os.path.basename(checkpoint_path) if checkpoint_path else None,
             },
         )
         # Define metrics for WandB summary
@@ -116,9 +118,7 @@ def evaluate(
         from src.methods.nninteractiveorig import nnInteractiveOrigPredictor
 
         predictor = nnInteractiveOrigPredictor(
-        checkpoint_path=os.path.join(
-            config["DATA_DIR"], "nnUNet_results/Dataset002_CT_Abdomen1K/CustomTrainer__nnUNetResEncUNetLPlans_noResampling__3d_fullres_ps192_bs1"
-        ),
+        checkpoint_path=checkpoint_path,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         verbose=verbose,
     )
@@ -500,6 +500,13 @@ if __name__ == "__main__":
         help="Path to the validation ground truth",
     )
 
+    parser.add_argument(
+        "--checkpoint_path",
+        default=None,
+        type=str,
+        help="Path to the model checkpoint. used in nnint_custom",
+    )
+
     args = parser.parse_args()
 
     evaluate(
@@ -514,4 +521,5 @@ if __name__ == "__main__":
         wandb_project=args.wandb_project,
         verbose=args.verbose,
         save_segs=args.save_segs,
+        checkpoint_path=args.checkpoint_path,  # used in nnint_custom
     )
