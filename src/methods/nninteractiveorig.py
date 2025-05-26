@@ -88,21 +88,16 @@ class nnInteractiveOrigPredictor:
             if bboxs is None and clicks is None:
                 self.log("   Warning: No prompts provided. Returning previous prediction.")
                 return prev_pred.copy(), time.time() - start_time
-            elif is_bbox_iteration:
-                num_classes_prompted = len(bboxs)
-                self.log(f"   Mode: BBox, Classes Prompted: {num_classes_prompted}")
-            else:
-                num_classes_prompted = len(clicks[1])
-                self.log(f"   Mode: Clicks, Classes Prompted: {num_classes_prompted}")
+
 
 
             # Determine number of classes to process
-            num_classes = (
-                num_classes_prompted
+            num_objects = (
+                num_objects
                 if num_classes_max is None
-                else min(num_classes_max, num_classes_prompted)
+                else min(num_classes_max, num_objects)
             )
-            self.log(f"Processing {num_classes} classes.")
+            self.log(f"Processing {num_objects} classes.")
 
             # Iteration through classes
             for oid in range(1, num_objects + 1):
