@@ -53,6 +53,22 @@ docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/test/
 
 docker save norateam:latest | gzip > /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission/norateam.tar.gz
 
+### Optimized Docker submission
+Install docker-squash:
+´pip install docker-squash´
+Install docker-slim:
+´curl -sL https://raw.githubusercontent.com/slimtoolkit/slim/master/scripts/install-slim.sh | sudo -E bash -´
+
+Combine Run commands, don't create pip cache when installing (reduces uncompressed image by 3GB):
+´docker build -f DockerfileOptimized -t norateam:latest .´
+Make sure we have a single layer:
+´docker-squash -t norateam:latest norateam:latest´
+Run the container, check what files are getting used and throw all others out (big gain in size reduction, untested):
+´slim build --target norateam:latest --tag norateam:latest --http-probe=false --include-workdir --mount $PWD/test/inputs/:/workspace/inputs/ --mount $PWD/test/outputs/:/workspace/outputs/ --exec "sh predict.sh"´
+
+Afterwards test and save image like before.
+
+
 ### Evaluating the image using the official script 
 
 # /data contains sample image and gt
