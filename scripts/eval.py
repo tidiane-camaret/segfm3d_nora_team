@@ -135,10 +135,10 @@ def evaluate(
 
     cases = remaining_cases
     """
-    if n_cases > 0:
-        cases = random.sample(
-            cases, min(n_cases, len(cases))
-        )  # sample cases, reproduceable
+    #cases = random.shuffle(cases)  # shuffle cases for reproducibility
+    cases = cases[:n_cases] if n_cases > 0 else cases  # limit number of cases to evaluate
+
+
     if len(cases) == 0:
         print("No cases found in the input directory.")
         print(img_dir)
