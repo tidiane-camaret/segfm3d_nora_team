@@ -114,24 +114,26 @@ class AddBBoxAndEmptyChannelsSingleClassTransform(AbstractTransform):
         prompt_channels = torch.zeros((7, *imgs.shape[1:]), device=imgs.device)
         if len(this_coords) > 0:
             # otherwise no ground truth class there, so also no bbox...
-            i_starts, i_stops = (
-                torch.min(this_coords, axis=0).values,
-                torch.max(this_coords, axis=0).values + 1,
-            )
+            # i_starts, i_stops = (
+            #     torch.min(this_coords, axis=0).values,
+            #     torch.max(this_coords, axis=0).values + 1,
+            # )
+            # use their logic again
+            bbox = mask3D_to_bbox(gts > 0)
 
             if self.only_2d_bbox:
                 prompt_channels[
                     1,
-                    (i_starts[0] + i_stops[0]) // 2,
-                    i_starts[1] : i_stops[1],
-                    i_starts[2] : i_stops[2],
+                    bbox["z_mid"],
+                    bbox['z_mid_y_min']:bbox['z_mid_y_max'],
+                    bbox['z_mid_x_min']:bbox['z_mid_x_max'],
                 ] = 1
             else:
                 prompt_channels[
                     1,
-                    i_starts[0] : i_stops[0],
-                    i_starts[1] : i_stops[1],
-                    i_starts[2] : i_stops[2],
+                    bbox['z_min']:bbox['z_max'],
+                    bbox['z_mid_y_min']:bbox['z_mid_y_max'],
+                    bbox['z_mid_x_min']:bbox['z_mid_x_max'],
                 ] = 1
 
         # Concatenate the original image with the prompt channels,
