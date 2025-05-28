@@ -38,9 +38,10 @@ def preproc_image(image):
 
 
 class NPZPytorchDataset(Dataset):
-    def __init__(self, npz_dataset, transform):
+    def __init__(self, npz_dataset, transform, fixed_class=None):
         self.npz_dataset = npz_dataset
         self.transform = transform
+        self.fixed_class = fixed_class
 
     def __getitem__(self, idx):
         patch_size = (192, 192, 192)
@@ -52,7 +53,10 @@ class NPZPytorchDataset(Dataset):
             classes_ints = [
                 key for key in class_locations.keys() if len(class_locations[key]) > 0
             ]
-            wanted_class_idx = np.random.choice(list(classes_ints))
+            if self.fixed_class is None:
+                wanted_class_idx = np.random.choice(list(classes_ints))
+            else:
+                wanted_class_idx = self.fixed_class
             this_coords = class_locations[wanted_class_idx]
         else:
             # background class only there
