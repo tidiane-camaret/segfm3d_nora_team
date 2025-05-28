@@ -1,6 +1,11 @@
 from torch import nn
 import torch
 import numpy as np
+from src.eval_metrics import (
+    compute_edt,
+    sample_coord,
+)
+import cc3d
 
 
 class ModelPrevSegAndClickWrapper(nn.Module):
@@ -20,13 +25,15 @@ class ModelPrevSegAndClickWrapper(nn.Module):
             # gts must be binary mask!
             gts = x_and_gts[:, -1:]
             n_clicks = np.random.choice(
-                range(self.n_max_clicks + 1), size=1, p=[0.75] + [0.25 / max(1, self.n_max_clicks)] * self.n_max_clicks,
+                range(self.n_max_clicks + 1),
+                size=1,
+                p=[0.5] + [0.5 / max(1, self.n_max_clicks)] * self.n_max_clicks,
             ).item()
             # print("n_clicks", n_clicks)
 
             if n_clicks > 0:
                 seg_outputs = self.orig_network(x)
-                final_seg_output = seg_outputs[0] # check this more properly
+                final_seg_output = seg_outputs[0]  # check this more properly
                 if final_seg_output.ndim < 5:
                     final_seg_output = final_seg_output[None]
                 assert final_seg_output.ndim == 5
@@ -41,64 +48,89 @@ class ModelPrevSegAndClickWrapper(nn.Module):
                 complete_neg_click_mask = torch.zeros_like(gts.bool())
                 for _ in range(n_clicks):
                     mistakes_mask = (gts > 0) != (final_seg_mask > 0)
-                    mistakes_coords = torch.argwhere(mistakes_mask)
-                    if len(mistakes_coords) == 0:
+
+                    if torch.sum(mistakes_mask).item() == 0:
                         # no mistakes at all, nothing to fix... very unlikely
                         break
 
                     coord_per_image = []
                     positive_clicks = []
-                    for i_image in range(mistakes_mask.shape[0]):
-                        this_coords = mistakes_coords[mistakes_coords[:, 0] == i_image]
-                        if len(this_coords) > 0:
-                            i_wanted_coord = np.random.choice(len(this_coords))
-                            wanted_coord = this_coords[i_wanted_coord]
-                            positive = gts[*wanted_coord] > 0
+                    for i_image in range(len(mistakes_mask)):
+                        error_mask = mistakes_mask[i_image, 0].cpu().numpy()
+                        assert gts.shape[1] == 1
+                        gts_this = gts[i_image, 0]
+                        n_errors = np.sum(error_mask)
+                        if n_errors > 0:
+                            errors = cc3d.connected_components(
+                                error_mask, connectivity=26
+                            )  # 26 for 3D connectivity
+                            # Calculate the sizes of connected error components
+                            component_sizes = np.bincount(errors.flat)
+                            # Ignore non-error regions
+                            component_sizes[0] = 0
+                            # Find the largest error component
+                            largest_component_error = np.argmax(component_sizes)
+                            # Find the voxel coordinates of the largest error component
+                            largest_component = errors == largest_component_error
+                            edt = compute_edt(largest_component)
+                            center = sample_coord(edt)
+                            positive = (gts_this[center[0], center[1], center[2]] > 0).item()
+                            if positive:
+                                assert (
+                                    final_seg_mask[
+                                        i_image, 0, center[0], center[1], center[2]
+                                    ].item()
+                                    == 0
+                                )
+                            else:
+                                assert (
+                                    final_seg_mask[
+                                        i_image, 0, center[0], center[1], center[2]
+                                    ].item()
+                                    == 1
+                                )
                         else:
-                            # add a click outside the image to simulate no click
-                            # first just take first mistake coord as some random coord
-                            wanted_coord = mistakes_coords[0]
-                            # doesn't matter if positive or not
-                            positive = gts[*wanted_coord] > 0
-                            # move outside image
-                            wanted_coord = wanted_coord * 0 - self.click_radius * 2
-                        coord_per_image.append(wanted_coord[2:])
+                            positive = False
+                            center = [
+                                -self.click_radius * 2,
+                                -self.click_radius * 2,
+                                -self.click_radius * 2,
+                            ]  # will be ignored later anyways through any_mistakes
+                        coord_per_image.append(center)
                         positive_clicks.append(positive)
-                    coords_z_y_x_per_im = torch.stack(coord_per_image)
+                    coords_z_y_x_per_im = torch.tensor(
+                        coord_per_image, device=mistakes_mask.device
+                    )
+                    positive_clicks = torch.tensor(
+                        positive_clicks, device=mistakes_mask.device
+                    )
+
                     # Create indices
                     z_indices, y_indices, x_indices = torch.meshgrid(
-                        torch.arange(
-                            mistakes_mask.shape[-3], device=mistakes_mask.device
-                        ),
-                        torch.arange(
-                            mistakes_mask.shape[-2], device=mistakes_mask.device
-                        ),
-                        torch.arange(
-                            mistakes_mask.shape[-1], device=mistakes_mask.device
-                        ),
+                        torch.arange(mistakes_mask.shape[-3], device=mistakes_mask.device),
+                        torch.arange(mistakes_mask.shape[-2], device=mistakes_mask.device),
+                        torch.arange(mistakes_mask.shape[-1], device=mistakes_mask.device),
                         indexing="ij",
                     )
                     diffs = (
                         torch.stack((z_indices, y_indices, x_indices))[None]
                         - coords_z_y_x_per_im[:, :, None, None, None]
                     )
+                    # set to zero if no errors, just for safety... should be 0 anyways
+                    any_mistakes = torch.sum(mistakes_mask, dim=(1, 2, 3, 4)) > 0
                     clicks_mask = (
                         torch.sqrt(torch.sum(diffs**2, dim=1, keepdim=True))
                         < self.click_radius
-                    )
+                    ) * any_mistakes[:, None, None, None, None]
+
                     positive_clicks_mask = (
-                        clicks_mask
-                        & torch.stack(positive_clicks)[:, None, None, None, None]
+                        clicks_mask & positive_clicks[:, None, None, None, None]
                     )
                     negative_clicks_mask = clicks_mask & (
-                        ~torch.stack(positive_clicks)[:, None, None, None, None]
+                        ~positive_clicks[:, None, None, None, None]
                     )
-                    complete_pos_click_mask = (
-                        complete_pos_click_mask | positive_clicks_mask
-                    )
-                    complete_neg_click_mask = (
-                        complete_neg_click_mask | negative_clicks_mask
-                    )
+                    complete_pos_click_mask = complete_pos_click_mask | positive_clicks_mask
+                    complete_neg_click_mask = complete_neg_click_mask | negative_clicks_mask
 
                 # - Channel -4: Positive point interaction
                 # - Channel -3: Negative point interaction
