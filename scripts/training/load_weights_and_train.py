@@ -7,7 +7,7 @@ import subprocess
 import json
 
 
-dataset_name = "Dataset007_AMOS"
+dataset_name = "Dataset010_ALL"
 network_config_name = "CustomTrainer__nnUNetResEncUNetLPlans__3d_fullres_ps192"
 nb_cases_eval = 10
 os.environ["nnUNet_raw"] = os.path.join(config["DATA_DIR"], "nnunet_raw")
@@ -16,8 +16,8 @@ os.environ["nnUNet_results"] = os.path.join(config["DATA_DIR"], "nnUNet_results"
 os.environ["NNINT_CKPT_DIR"] = config["NNINT_CKPT_DIR"]
 
 # Evaluate the 1.0 weights on the competition task
-command = f"python scripts/eval.py -ca {nb_cases_eval} -m nnint_custom --checkpoint_path {os.path.join(os.environ["NNINT_CKPT_DIR"] ,"nnInteractive_v1.0")}"
-os.system(command)
+#command = f"python scripts/eval.py -ca {nb_cases_eval} -m nnint_custom --checkpoint_path {os.path.join(os.environ["NNINT_CKPT_DIR"] ,"nnInteractive_v1.0")}"
+#os.system(command)
 
 
 
@@ -37,7 +37,8 @@ trainer = CustomTrainer(
     configuration="3d_fullres_ps192",
     fold=fold,
     dataset_json=dataset_json,
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    #freeze_decoder=False,
 )
 # Set the initial checkpoint path 
 trainer.set_initial_checkpoint(os.path.join(os.environ["NNINT_CKPT_DIR"] ,"nnInteractive_v1.0/fold_0/checkpoint_final.pth"))
@@ -49,4 +50,5 @@ trainer.run_training()
 ### Evaluate the trained model on the competition task
 
 command = f"python scripts/eval.py -ca {nb_cases_eval} -m nnint_custom --checkpoint_path {os.environ['nnUNet_results']}/{dataset_name}/{network_config_name}"
+print(command)
 os.system(command)
