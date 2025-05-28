@@ -166,6 +166,11 @@ class AddSegToImageTransform(AbstractTransform):
 
 
 class MONAIRandSpatialTransform:
+    def __init__(self, rotate_range=(0.52,0.52,0.52), scale_range=(0.3,0.3,0.3), prob_affine=0.2):
+        self.rotate_range = rotate_range
+        self.scale_range = scale_range
+        self.prob_affine = prob_affine
+
     def __call__(self, **data_dict):
         pad_transform = SpatialPadd(
             keys=["image", "segmentation"],
@@ -180,9 +185,9 @@ class MONAIRandSpatialTransform:
         )
         affine_transform = RandAffined(
             keys=["image", "segmentation"],
-            prob=0.2,  # For rotation and scaling together
-            rotate_range=[0.52, 0.52, 0.52],  # ~30 degrees in all axes
-            scale_range=[0.3, 0.3, 0.3],  # (1 - 0.7, 1.4 - 1)
+            prob=self.prob_affine,  # For rotation and scaling together
+            rotate_range=self.rotate_range,  # ~30 degrees in all axes
+            scale_range=self.scale_range,  # (1 - 0.7, 1.4 - 1)
             mode=["bilinear", "nearest"],  # image, label interpolation
             padding_mode="zeros",
         )
