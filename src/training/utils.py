@@ -163,11 +163,7 @@ test_transform = ComposeTransforms(
 train_transform = ComposeTransforms(
     [
         NormalizeSingleImageTransform(),
-        MONAIRandSpatialTransform(
-            rotate_range=(0.025 * np.pi * 2, 0.025 * np.pi * 2, 0.025 * np.pi * 2),
-            scale_range=(0.2, 0.2, 0.2),
-            prob_affine=0.5,
-        ),
+        MONAIFixedSpatialTransform(),
         # RandomTransform(
         #     apply_probability=0.1,
         #     transform=GaussianNoiseTransform(

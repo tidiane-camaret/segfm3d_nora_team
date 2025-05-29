@@ -8,23 +8,31 @@ from src.config import config
 from src.training.utils import args_for_network, test_transform, train_transform
 from src.eval import evaluate
 
-n_epochs = 1
-lr = 3e-4
-weight_decay = 1e-5
-n_max_clicks = 1
-num_eval_cases = 10
-
-wandb_project_name = "segfm3d_nora_team"  # Align with eval.py's default
 wandb.init(
-    project=wandb_project_name,
-    #name=wandb_run_name,
-    config={
+    project="segfm3d_nora_team",)
+
+n_epochs = wandb.config.get('n_epochs', 1)
+lr = wandb.config.get('lr', 3e-4)
+weight_decay = wandb.config.get('weight_decay', 1e-5)
+loss_weight = wandb.config.get('loss_weight', 10)
+accumulate_batch_size = wandb.config.get('accumulate_batch_size', 8)
+
+n_max_clicks = wandb.config.get('n_max_clicks', 5)  
+num_eval_cases = 10
+accumulate_batch_size = wandb.config.get('accumulate_batch_size', 8)
+n_batches_accumulate = accumulate_batch_size // 2
+"""
+wandb.config.update({
         "n_epochs": n_epochs,
         "lr": lr,
         "weight_decay": weight_decay,
         "n_max_clicks": n_max_clicks,
+        "accumulate_batch_size": accumulate_batch_size,
+        "loss_weight": loss_weight,
+
     },
 )
+"""
 
 network = get_network_from_plans(**args_for_network).cuda()
 orig_checkpoint_dir = os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0/")
@@ -104,7 +112,7 @@ from copy import deepcopy
 import shutil
 out_dir = os.path.join(
     config["NNINT_CKPT_DIR"],
-    "nnInteractive_v1.0/finetuned_28_05/",
+    "nnInteractive_v1.0/finetuned_29_05/",
 )
 try:
     shutil.copytree(orig_checkpoint_dir, out_dir)
@@ -120,6 +128,8 @@ trained_chkpt = deepcopy(chkpt_dict)
 from src.training.utils import compute_binary_dsc
 moving_dsc = None
 all_mean_dscs = []
+i_batch = 0
+optim_network.zero_grad()
 for i_epoch in trange(n_epochs):
     epoch_mean_dscs = []
     for batch in (pbar := tqdm(train_loader)):
@@ -137,14 +147,18 @@ for i_epoch in trange(n_epochs):
             sum_pred = torch.sum(binary_pred, dim=(1,2,3))
             sum_targets = torch.sum(targets, dim=(1,2,3))
             mean_dsc = torch.mean((2 * intersect + eps) / (sum_pred + sum_targets + eps))
-            loss = cent + 10 * (1 - mean_dsc)
-            optim_network.zero_grad()
+            loss = cent + loss_weight * (1 - mean_dsc)
+            loss = loss / n_batches_accumulate  # gradient accumulation
             loss.backward()
-            if torch.isfinite(loss).item():
+            i_batch += 1
+            if torch.isfinite(loss).item() and ((i_batch % n_batches_accumulate) == 0):
                 optim_network.step()
-            else:
+                optim_network.zero_grad()
+            elif not torch.isfinite(loss).item():
                 print("loss not finite, not updating!")
-            optim_network.zero_grad()
+                optim_network.zero_grad()
+            else:
+                pass
         epoch_mean_dscs.append(mean_dsc.item())
         if torch.isfinite(loss).item():
             moving_dsc = mean_dsc if moving_dsc is None else (moving_dsc * 0.98 + mean_dsc * 0.02)

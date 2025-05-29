@@ -434,3 +434,16 @@ def evaluate(
         except Exception as e:
             traceback.print_exc()
             print(f"Error message: {e}")
+
+    if use_wandb:  
+        # Log the final metrics
+        wandb.log(
+            {
+                "AVG_DSC_AUC": np.mean(metric["DSC_AUC"]),
+                "AVG_NSD_AUC": np.mean(metric["NSD_AUC"]),
+                "AVG_DSC_Final": np.mean(metric["DSC_Final"]),
+                "AVG_NSD_Final": np.mean(metric["NSD_Final"]),
+                "AVG_TotalRunningTime": np.mean(metric["TotalRunningTime"]),
+            }
+        )
+        wandb.finish()
