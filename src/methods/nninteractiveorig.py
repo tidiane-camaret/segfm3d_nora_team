@@ -55,7 +55,7 @@ class nnInteractiveOrigPredictor:
         is_bbox_iteration=True,  # True if current bbox iteration, False if click iteration
         prev_pred=None,  # Full prediction from previous step (NumPy ZYX)
         num_classes_max=None,  # Optional: limit number of classes processed
-        add_previous_interactions=True,  # Optional: add previous interaction to the current one
+        add_previous_clicks=True,  # Optional: add previous interaction to the current one
     ):
         """
         Predicts the segmentation of the input image using nnInteractive for every class described by the bbox or click list. Called at each iteration step.
@@ -118,8 +118,8 @@ class nnInteractiveOrigPredictor:
                 
                     with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext(): # Suppress output
                         self.log(f"   BBox coordinates: {bbox_here}")
-                        if is_bbox_iteration or add_previous_interactions:
-                            self.session.add_bbox_interaction(bbox_here, include_interaction=True, run_prediction=False)
+                        #if is_bbox_iteration or add_previous_interactions:
+                        self.session.add_bbox_interaction(bbox_here, include_interaction=True, run_prediction=False)
 
 
                 self.log("CLICK ITERATION")
@@ -140,7 +140,7 @@ class nnInteractiveOrigPredictor:
                         #print(f"Class {oid}: {kind} click at {click}")
                         is_last_click = i_click == (len(clicks_order_here) - 1)
                         with contextlib.redirect_stdout(open(os.devnull, 'w')) if not self.verbose else contextlib.nullcontext():
-                            if add_previous_interactions or is_last_click:
+                            if add_previous_clicks or is_last_click:
                                 self.session.add_point_interaction(click, include_interaction=kind == 'fg', run_prediction=False)
 
                     #clicks_cls, clicks_order = clicks[0][oid - 1], clicks[1][oid - 1]

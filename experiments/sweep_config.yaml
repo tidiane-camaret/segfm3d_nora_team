@@ -12,8 +12,6 @@ parameters:
     distribution: log_uniform_values
     min: 1e-6
     max: 1e-3
-  n_epochs:
-    values: [5, 10, 15, 20, 25]
   loss_weight:
     distribution: uniform
     min: 5

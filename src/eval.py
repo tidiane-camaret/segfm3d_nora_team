@@ -42,6 +42,7 @@ def evaluate(
     verbose=False,
     save_segs=True,
     checkpoint_path=None,  # used in nnint_custom
+    add_previous_clicks=True,  # used in nnint_custom
 ):
     torch.set_grad_enabled(False)  # Disable gradient calculation for inference
     if save_segs:
@@ -62,6 +63,7 @@ def evaluate(
                 "gpu_available": torch.cuda.is_available(),
                 "method": method,
                 "checkpoint_name": os.path.basename(checkpoint_path) if checkpoint_path else None,
+                "add_previous_clicks": add_previous_clicks,
             },
         )
         # Define metrics for WandB summary
@@ -314,6 +316,7 @@ def evaluate(
                     is_bbox_iteration=it == 0,
                     prev_pred=segs,  # Pass previous prediction
                     num_classes_max=n_classes_max,
+                    add_previous_clicks=add_previous_clicks,
                 )
 
                 ### Computing Metrics

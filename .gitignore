@@ -8,6 +8,7 @@
 /wandb
 /docker_images/
 /docker_context/model
+/docker_context_final/model
 /docker_submission/data
 /docker_submission/outputs
 /docker_submission/inputs

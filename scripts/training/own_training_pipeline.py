@@ -1,27 +1,29 @@
 import os
-import wandb
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import torch
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 from src.config import config
-from src.training.utils import args_for_network, test_transform, train_transform
 from src.eval import evaluate
+from src.training.utils import args_for_network, test_transform, train_transform
+
+import wandb
 
 wandb.init(
-    project="segfm3d_nora_team",)
+    project="segfm3d_nora_team",
+)
 
-n_epochs = wandb.config.get('n_epochs', 1)
-lr = wandb.config.get('lr', 3e-4)
-weight_decay = wandb.config.get('weight_decay', 1e-5)
-loss_weight = wandb.config.get('loss_weight', 10)
-accumulate_batch_size = wandb.config.get('accumulate_batch_size', 8)
-
-n_max_clicks = wandb.config.get('n_max_clicks', 5)  
+n_epochs = wandb.config.get("n_epochs", 1)
+lr = wandb.config.get("lr", 2e-5)
+weight_decay = wandb.config.get("weight_decay", 6e-4)
+loss_weight = wandb.config.get("loss_weight", 10)
+accumulate_batch_size = wandb.config.get("accumulate_batch_size", 16)
+add_previous_clicks = wandb.config.get("add_previous_clicks", False)
+n_max_clicks = wandb.config.get("n_max_clicks", 1)
 num_eval_cases = 10
-accumulate_batch_size = wandb.config.get('accumulate_batch_size', 8)
 n_batches_accumulate = accumulate_batch_size // 2
-"""
+""""
 wandb.config.update({
         "n_epochs": n_epochs,
         "lr": lr,
@@ -108,17 +110,20 @@ optim_network = torch.optim.AdamW(
     wrapped_network.parameters(), lr=lr, weight_decay=weight_decay
 )
 
-from copy import deepcopy
+import datetime
 import shutil
+from copy import deepcopy
+
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 out_dir = os.path.join(
-    config["NNINT_CKPT_DIR"],
-    "nnInteractive_v1.0/finetuned_29_05/",
+    config["NNINT_CKPT_DIR"], f"finetuned_{timestamp}_{wandb.run.id}/"
 )
+
 try:
     shutil.copytree(orig_checkpoint_dir, out_dir)
 except FileExistsError:
     print(f"path {out_dir} exists already, fine")
-trained_chkpt_path = os.path.join(out_dir, 'fold_0/checkpoint_final.pth')
+trained_chkpt_path = os.path.join(out_dir, "fold_0/checkpoint_final.pth")
 assert os.path.exists(trained_chkpt_path)
 
 # copy the checkpoint dict for the previous segmentation logic
@@ -126,6 +131,7 @@ trained_chkpt = deepcopy(chkpt_dict)
 
 
 from src.training.utils import compute_binary_dsc
+
 moving_dsc = None
 all_mean_dscs = []
 i_batch = 0
@@ -134,19 +140,21 @@ for i_epoch in trange(n_epochs):
     epoch_mean_dscs = []
     for batch in (pbar := tqdm(train_loader)):
         with defer_keysignal_with_grad():
-            targets = batch["segmentation"][0][:,0].long().cuda()
+            targets = batch["segmentation"][0][:, 0].long().cuda()
             out = wrapped_network(batch["image"].cuda())
             # assuming deep supervision
             pred = out[0]
-            assert pred[:,0].shape == targets.shape
+            assert pred[:, 0].shape == targets.shape
             cent = torch.nn.functional.cross_entropy(pred, targets)
-            binary_pred = torch.sigmoid(torch.diff(pred, dim=1)[:,0])
+            binary_pred = torch.sigmoid(torch.diff(pred, dim=1)[:, 0])
             assert binary_pred.shape == targets.shape
             eps = 1e-3
-            intersect = torch.sum(binary_pred * targets, dim=(1,2,3))
-            sum_pred = torch.sum(binary_pred, dim=(1,2,3))
-            sum_targets = torch.sum(targets, dim=(1,2,3))
-            mean_dsc = torch.mean((2 * intersect + eps) / (sum_pred + sum_targets + eps))
+            intersect = torch.sum(binary_pred * targets, dim=(1, 2, 3))
+            sum_pred = torch.sum(binary_pred, dim=(1, 2, 3))
+            sum_targets = torch.sum(targets, dim=(1, 2, 3))
+            mean_dsc = torch.mean(
+                (2 * intersect + eps) / (sum_pred + sum_targets + eps)
+            )
             loss = cent + loss_weight * (1 - mean_dsc)
             loss = loss / n_batches_accumulate  # gradient accumulation
             loss.backward()
@@ -161,17 +169,21 @@ for i_epoch in trange(n_epochs):
                 pass
         epoch_mean_dscs.append(mean_dsc.item())
         if torch.isfinite(loss).item():
-            moving_dsc = mean_dsc if moving_dsc is None else (moving_dsc * 0.98 + mean_dsc * 0.02)
+            moving_dsc = (
+                mean_dsc
+                if moving_dsc is None
+                else (moving_dsc * 0.98 + mean_dsc * 0.02)
+            )
         pbar.set_postfix(dict(moving_dsc=moving_dsc.item()))
         print(mean_dsc.item())
         print(cent.item())
         print()
     print("mean dsc", np.nanmean(epoch_mean_dscs))
     all_mean_dscs.extend(epoch_mean_dscs)
-    
+
     print(f"Epoch {i_epoch}")
     if torch.isfinite(loss).item():
-        trained_chkpt['network_weights'] = wrapped_network.orig_network.state_dict()
+        trained_chkpt["network_weights"] = wrapped_network.orig_network.state_dict()
         torch.save(trained_chkpt, trained_chkpt_path)
         print(f"Checkpoint saved to {trained_chkpt_path}")
 
@@ -193,31 +205,38 @@ for i_epoch in trange(n_epochs):
         test_results.append(
             dict(
                 hard_dsc=compute_binary_dsc((binary_pred > 0.5), targets),
-                soft_dsc=((2 * intersect + eps) / (sum_pred + sum_targets + eps)).cpu().numpy().mean(),
-                cent=cent.item()
+                soft_dsc=((2 * intersect + eps) / (sum_pred + sum_targets + eps))
+                .cpu()
+                .numpy()
+                .mean(),
+                cent=cent.item(),
             )
         )
 
 df_test_results = pd.DataFrame(test_results)
 mean_test_results = df_test_results.mean()
-final_test_hard_dsc = mean_test_results.get('hard_dsc', float('nan'))
-final_test_soft_dsc = mean_test_results.get('soft_dsc', float('nan'))
-final_test_cent = mean_test_results.get('cent', float('nan'))
+final_test_hard_dsc = mean_test_results.get("hard_dsc", float("nan"))
+final_test_soft_dsc = mean_test_results.get("soft_dsc", float("nan"))
+final_test_cent = mean_test_results.get("cent", float("nan"))
 
-wandb.log({
-    "training_epochs_completed": n_epochs, # n_epochs is the total planned and executed
-    "final_train_test_hard_dsc": final_test_hard_dsc,
-    "final_train_test_soft_dsc": final_test_soft_dsc,
-    "final_train_test_cent": final_test_cent
-})
+wandb.log(
+    {
+        "training_epochs_completed": n_epochs,  # n_epochs is the total planned and executed
+        "final_train_test_hard_dsc": final_test_hard_dsc,
+        "final_train_test_soft_dsc": final_test_soft_dsc,
+        "final_train_test_cent": final_test_cent,
+    }
+)
 
 print(f"\n--- Starting evaluation using eval.py script ---")
 
 # Define paths for evaluation - adjust these if your config structure is different
 # or if these paths are not what you intend for evaluation.
 # Assuming 'config' is loaded and contains 'DATA_DIR' and 'RESULTS_DIR'
-eval_img_dir = os.path.join(config["DATA_DIR"], "3D_val_npz") # Example path
-eval_gt_dir = os.path.join(config["DATA_DIR"], "3D_val_gt_interactive_seg") # Example path
+eval_img_dir = os.path.join(config["DATA_DIR"], "3D_val_npz")  # Example path
+eval_gt_dir = os.path.join(
+    config["DATA_DIR"], "3D_val_gt_interactive_seg"
+)  # Example path
 eval_output_dir_base = os.path.join(config["RESULTS_DIR"], "eval_after_own_training")
 
 output_dir = os.path.join(config["RESULTS_DIR"])
@@ -233,11 +252,14 @@ evaluate(
     n_cases=num_eval_cases,
     n_classes_max=None,  # Default from eval.py
     use_wandb=True,  # Critical: eval.py will log its detailed metrics to the same wandb run
-    wandb_project=wandb_project_name, # Ensure consistency
+    wandb_project="segfm3d_nora_team",  # Ensure consistency
     verbose=False,  # Default from eval.py, adjust if needed
     save_segs=False,  # Default from eval.py, consider False if space/time is an issue
-    checkpoint_path=os.path.dirname(os.path.dirname(trained_chkpt_path)) # Pass the path two levels up from the finetuned checkpoint
+    checkpoint_path=os.path.dirname(
+        os.path.dirname(trained_chkpt_path)
+    ),  # Pass the path two levels up from the finetuned checkpoint
+    add_previous_clicks=add_previous_clicks,
 )
 
 
-wandb.finish() # End the wandb run
+wandb.finish()  # End the wandb run

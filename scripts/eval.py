@@ -86,6 +86,12 @@ if __name__ == "__main__":
         help="Path to the model checkpoint. used in nnint_custom",
     )
 
+    parser.add_argument(
+        "--add_previous_clicks",
+        action="store_true",
+        help="Add previous clicks to the current click input (for nnint_custom)",
+    )
+
     args = parser.parse_args()
 
     evaluate(
@@ -101,4 +107,5 @@ if __name__ == "__main__":
         verbose=args.verbose,
         save_segs=args.save_segs,
         checkpoint_path=args.checkpoint_path,  # used in nnint_custom
+        add_previous_clicks= args.add_previous_clicks
     )
