@@ -25,6 +25,7 @@ wandb.init(
         "n_max_clicks": n_max_clicks,
     },
 )
+
 network = get_network_from_plans(**args_for_network).cuda()
 orig_checkpoint_dir = os.path.join(config["NNINT_CKPT_DIR"], "nnInteractive_v1.0/")
 
@@ -207,10 +208,8 @@ eval_output_dir_base = os.path.join(config["RESULTS_DIR"], "eval_after_own_train
 
 output_dir = os.path.join(config["RESULTS_DIR"])
 
-
 # Number of cases to evaluate, set to 0 to run on all cases found by eval.py
 # or adjust as needed. eval.py defaults to 10.
-
 evaluate(
     method="nnint_custom",  # This method uses the 'checkpoint_path' argument
     img_dir=eval_img_dir,
@@ -223,7 +222,7 @@ evaluate(
     wandb_project=wandb_project_name, # Ensure consistency
     verbose=False,  # Default from eval.py, adjust if needed
     save_segs=False,  # Default from eval.py, consider False if space/time is an issue
-    checkpoint_path=trained_chkpt_path # Pass the path to the finetuned checkpoint
+    checkpoint_path=os.path.dirname(os.path.dirname(trained_chkpt_path)) # Pass the path two levels up from the finetuned checkpoint
 )
 
 
