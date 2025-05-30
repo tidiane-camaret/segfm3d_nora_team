@@ -143,9 +143,9 @@ def evaluate(
     # just now start at specific image to check error
     
     # randomize which cases are evaluated
-    # np.random.shuffle(cases)
-    # cases = cases[7:n_cases+7] if n_cases > 0 else cases  # limit number of cases to evaluate
-    cases = cases[:n_cases]
+    np.random.shuffle(cases)
+    #cases = cases[7:n_cases+7] if n_cases > 0 else cases  # limit number of cases to evaluate
+    cases = cases[:n_cases] if n_cases > 0 else cases
 
 
     if len(cases) == 0:
