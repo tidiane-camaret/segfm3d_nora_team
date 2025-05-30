@@ -97,15 +97,12 @@ class SimplePredictor:
     def predict(
         self,
         image,  # Full 3D image (NumPy ZYX)
-        spacing,  # Voxel spacing (tuple/list XYZ)
         bboxs=None,  # BBox list (used in iter 0) [{'z_min':..,}, ...] * num_classes
         clicks=None,  # Click tuple (used in iter 1+) containing :
         # clicks_cls : coordinates of every fg and bg click so far, {'fg':[[x,y,z],..], 'bg':[[x,y,z],..]} * num_classes
         # clicks_order : order of clicks,  ['fg', 'fg', 'bg' ...] * num_classes
-        is_bbox_iteration=True,  # True if current bbox iteration, False if click iteration
         prev_pred=None,  # Full prediction from previous step (NumPy ZYX)
         num_classes_max=None,  # Optional: limit number of classes processed
-        add_previous_interactions=True,  # Optional: add previous interaction to the current one
     ):
         start_time = time.time()
         forward_pass_time = 0
@@ -129,6 +126,7 @@ class SimplePredictor:
         patch_sizes = np.array([192, 192, 192])
 
         all_preds = []
+
 
         nonzero_bbox = get_nonzero_bbox(image)
         nonzero_slicer = bbox_to_slicer(nonzero_bbox)
@@ -289,6 +287,12 @@ class SimplePredictor:
                     this_pred_in_image, net_pred, bbox=scaled_bbox_in_full_image
                 )
                 all_preds.append(pasted_pred)
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+                    torch.cuda.reset_peak_memory_stats()
+                    empty_cache(torch.device('cuda', 0))
+                gc.collect()
+
             except Exception as e:
                 print(f"Error on class {i_class + 1}:", e)
                 traceback.print_exc()
