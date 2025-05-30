@@ -17,6 +17,7 @@ from src.training.transforms import NormalizeSingleImageTransformNumpy
 from src.training.transforms import crop_and_add_bbox
 from src.pred_util import paste_tensor_leading_dim
 from copy import deepcopy
+import traceback
 
 
 def compute_background_log_prob(logits):
@@ -111,7 +112,6 @@ class SimplePredictor:
         crop_scaled_bbox_time = 0
 
         device = self.device
-        boxes = bboxs
 
         ordered_clicks_per_class = []
         forward_pass_count = 0
@@ -129,9 +129,8 @@ class SimplePredictor:
         patch_sizes = np.array([192, 192, 192])
 
         all_preds = []
-        n_classes = len(boxes)
-        if num_classes_max is not None:
-            n_classes = min(n_classes, num_classes_max)
+
+
 
         nonzero_bbox = get_nonzero_bbox(image)
         nonzero_slicer = bbox_to_slicer(nonzero_bbox)
@@ -139,6 +138,21 @@ class SimplePredictor:
         normed_image = NormalizeSingleImageTransformNumpy()(image=nonzero_image)[
             "image"
         ].astype(np.float32)
+        if bboxs is None:
+            # make box in middle third of the image
+            bboxs = [dict(
+                z_min=(2 * nonzero_bbox[0,0] + nonzero_bbox[0,1]) // 3,
+                z_max=(nonzero_bbox[0,0] + 2 * nonzero_bbox[0,1]) // 3,
+                z_mid=(nonzero_bbox[0,0] + nonzero_bbox[0,1]) // 2,
+                z_mid_y_min=(2 * nonzero_bbox[1,0] + nonzero_bbox[1,1]) // 3,
+                z_mid_y_max=(nonzero_bbox[1,0] + 2 * nonzero_bbox[1,1]) // 3,
+                z_mid_x_min=(2 * nonzero_bbox[2,0] + nonzero_bbox[2,1]) // 3,
+                z_mid_x_max=(nonzero_bbox[2,0] + 2 * nonzero_bbox[2,1]) // 3,
+            )]
+
+        n_classes = len(bboxs)
+        if num_classes_max is not None:
+            n_classes = min(n_classes, num_classes_max)
         for i_class in range(n_classes):
             try:
                 prev_seg = prev_pred == (i_class + 1)
@@ -168,7 +182,7 @@ class SimplePredictor:
                     patch_sizes=patch_sizes,
                 )
                 crop_scaled_bbox_time += time.time() - start_time_crop_scaled_bbox
-
+                
                 class_cropped_im = cropped_im_and_scaled_bbox["image"]
                 class_cropped_bbox_chan = cropped_im_and_scaled_bbox["bbox_chan"]
                 class_cropped_prev_seg = cropped_im_and_scaled_bbox["segmentation"]
@@ -279,6 +293,7 @@ class SimplePredictor:
                 all_preds.append(pasted_pred)
             except Exception as e:
                 print(f"Error on class {i_class + 1}:", e)
+                traceback.print_exc()
                 fake_pred = torch.zeros((2,) + image.shape, device=device)
                 # predict this class as not existing
                 fake_pred[:, 1] = -torch.inf
