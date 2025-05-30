@@ -2,23 +2,27 @@
 *.py[cod]
 *.tar
 *.sif
+*.pth
 *tar.gz
 /results
 /data
 /wandb
 
-/docker/docker_images/
+/docker/images/
 
 /docker/contexts/docker_context
 /docker/contexts/docker_context_final/model
 /docker/contexts/docker_context_final/nnInteractive
 
+/docker/contexts/simple_method_30_05/model
 
-/docker/docker_submission/data
-/docker/docker_submission/dist_linux
-/docker/docker_submission/outputs
-/docker/docker_submission/inputs
-/docker/docker_submission/test/outputs
+
+/docker/submission/data
+/docker/submission/dist_linux
+/docker/submission/outputs
+/docker/submission/inputs
+/docker/submission/test/outputs
+/docker/submission/test/inputs
 
 
 /singularity_submission/inputs

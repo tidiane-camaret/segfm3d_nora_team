@@ -38,32 +38,29 @@ The official evaluation script is designed to run in a Docker container. If you 
 ```bash
 ### Building the Docker image
 
-cd docker_context/
+cd docker/contexts/*context_dir*
 docker build -t norateam:latest .
 
 ### Testing the Docker image on one case (nv : GPU usage)
 # Note : The official script copies the images in a temp directory first. 
 # We reproduce this behavior by providing one image in docker_submission/test/inputs/ 
 
-cd docker_submission/ 
+cd docker/docker_submission/ 
 
 docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/test/inputs/:/workspace/inputs/ -v $PWD/test/outputs/:/workspace/outputs/ norateam:latest /bin/bash -c "sh predict.sh"  
 
 ### Saving as a tar file
 
-docker save norateam:latest | gzip > /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission/norateam.tar.gz
+docker save norateam:latest | gzip > docker/images/eval/norateam.tar.gz
 
 ### Evaluating the image using the official script 
 
-# /data contains sample image and gt
 
-python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission --test_img_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/inputs/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/inputs/3D_val_gt --verbose
-
-# with more data (cvpr25/data/)
-python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_images/submission --test_img_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker_submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_gt/3D_val_gt_interactive --verbose
+# with competition data
+python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker/images/eval --test_img_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker/submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_gt/3D_val_gt_interactive --verbose
 
 
-# evaluating on the test examples (/nfs/norasys/notebooks/camaret/cvpr25/test_demo)
+# evaluating on the test examples for the sanity check video
 cd /nfs/norasys/notebooks/camaret/cvpr25/test_demo
 docker container run --gpus "device=0" -m 32G --name norateam --rm -v $PWD/imgs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ norateam:latest /bin/bash -c "sh predict.sh"
 ```
