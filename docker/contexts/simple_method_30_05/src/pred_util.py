@@ -1,13 +1,10 @@
-from acvl_utils.cropping_and_padding.bounding_boxes import (
-    bounding_box_to_slice,
-    crop_and_pad_nd,
-)
-
-from torch.nn.functional import interpolate
-from typing import Union, List, Tuple, Optional
-import torch
 import time
+from typing import List, Tuple, Union
+
 import numpy as np
+import torch
+from acvl_utils.cropping_and_padding.bounding_boxes import bounding_box_to_slice
+from torch.nn.functional import interpolate
 
 
 def paste_tensor_leading_dim(target: torch.Tensor, source: torch.Tensor, bbox):
@@ -235,13 +232,17 @@ def pred_all_classes(network, image, boxes, do_autozoom, only_2d_bbox_interactio
             ]
             crop_img, pad = crop_to_valid(preproced_image, scaled_bbox)
             crop_img = crop_img.to(device, non_blocking=device.type == "cuda")
-            crop_interactions, pad_interaction = crop_to_valid(interactions, scaled_bbox)
+            crop_interactions, pad_interaction = crop_to_valid(
+                interactions, scaled_bbox
+            )
 
             if not all([i == j for i, j in zip(patch_size, scaled_patch_size)]):
                 crop_img = interpolate(
-                    pad_cropped(crop_img, pad)[None]
-                    if any([x for y in pad_interaction for x in y])
-                    else crop_img[None],
+                    (
+                        pad_cropped(crop_img, pad)[None]
+                        if any([x for y in pad_interaction for x in y])
+                        else crop_img[None]
+                    ),
                     patch_size,
                     mode="trilinear",
                 )[0]

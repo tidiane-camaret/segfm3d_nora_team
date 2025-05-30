@@ -23,7 +23,7 @@
 /docker/submission/inputs
 /docker/submission/test/outputs
 /docker/submission/test/inputs
-
+/docker/submission/wandb
 
 /singularity_submission/inputs
 __pycache__

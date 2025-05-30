@@ -1,17 +1,12 @@
-from typing import Union, List, Tuple
-import numpy as np
-import torch
-from batchgenerators.transforms.abstract_transforms import AbstractTransform
-from typing import Union, List, Tuple
 import numpy as np
 import torch
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
 from monai.transforms import (
-    RandSpatialCropd,
-    RandAffined,
-    Compose,
-    SpatialPadd,
     CenterSpatialCropd,
+    Compose,
+    RandAffined,
+    RandSpatialCropd,
+    SpatialPadd,
 )
 
 
@@ -363,12 +358,14 @@ def crop_and_add_bbox(image, bbox, segmentation, patch_sizes):
         padded_img = cropped_img
         padded_seg = cropped_seg
         padded_bbox_chan = cropped_bbox_chan
-        scaled_orig_bbox= np.array([[0,patch_sizes[0]],[0,patch_sizes[1]],[0,patch_sizes[2]]])
-        scaled_slicer = tuple((slice(i,j) for i,j in scaled_orig_bbox))
+        scaled_orig_bbox = np.array(
+            [[0, patch_sizes[0]], [0, patch_sizes[1]], [0, patch_sizes[2]]]
+        )
+        scaled_slicer = tuple((slice(i, j) for i, j in scaled_orig_bbox))
 
-    assert np.sum(padded_bbox_chan) == np.sum(bbox_chan), (
-        "should be no loss of bounding box"
-    )
+    assert np.sum(padded_bbox_chan) == np.sum(
+        bbox_chan
+    ), "should be no loss of bounding box"
     assert padded_img.shape == tuple(scaled_patch_size), (
         f"Expected padded img shape:\n{padded_img.shape} to be same as "
         f"scaled patch size:\n {tuple(scaled_patch_size)}"
@@ -380,7 +377,7 @@ def crop_and_add_bbox(image, bbox, segmentation, patch_sizes):
         segmentation=padded_seg,
         bbox_chan=padded_bbox_chan,
         scaled_orig_bbox=scaled_orig_bbox,
-        scaled_slicer=scaled_slicer
+        scaled_slicer=scaled_slicer,
     )
 
 

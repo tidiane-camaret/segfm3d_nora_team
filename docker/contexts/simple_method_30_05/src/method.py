@@ -1,23 +1,19 @@
-import os
+import gc
 import time
-import sys
+import traceback
+from copy import deepcopy
+
 import numpy as np
 import torch
-import contextlib
-import gc
-from nnunetv2.utilities.helpers import empty_cache
-import torch
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
+from nnunetv2.utilities.helpers import empty_cache
+from src.pred_util import paste_tensor_leading_dim
 from src.training.transforms import (
-    crop_to_nonzero_image,
+    NormalizeSingleImageTransformNumpy,
     bbox_to_slicer,
+    crop_and_add_bbox,
     get_nonzero_bbox,
 )
-from src.training.transforms import NormalizeSingleImageTransformNumpy
-from src.training.transforms import crop_and_add_bbox
-from src.pred_util import paste_tensor_leading_dim
-from copy import deepcopy
-import traceback
 
 
 def compute_background_log_prob(logits):
@@ -127,7 +123,6 @@ class SimplePredictor:
 
         all_preds = []
 
-
         nonzero_bbox = get_nonzero_bbox(image)
         nonzero_slicer = bbox_to_slicer(nonzero_bbox)
         nonzero_image = image[nonzero_slicer]
@@ -136,15 +131,17 @@ class SimplePredictor:
         ].astype(np.float32)
         if bboxs is None:
             # make box in middle third of the image
-            bboxs = [dict(
-                z_min=(2 * nonzero_bbox[0,0] + nonzero_bbox[0,1]) // 3,
-                z_max=(nonzero_bbox[0,0] + 2 * nonzero_bbox[0,1]) // 3,
-                z_mid=(nonzero_bbox[0,0] + nonzero_bbox[0,1]) // 2,
-                z_mid_y_min=(2 * nonzero_bbox[1,0] + nonzero_bbox[1,1]) // 3,
-                z_mid_y_max=(nonzero_bbox[1,0] + 2 * nonzero_bbox[1,1]) // 3,
-                z_mid_x_min=(2 * nonzero_bbox[2,0] + nonzero_bbox[2,1]) // 3,
-                z_mid_x_max=(nonzero_bbox[2,0] + 2 * nonzero_bbox[2,1]) // 3,
-            )]
+            bboxs = [
+                dict(
+                    z_min=(2 * nonzero_bbox[0, 0] + nonzero_bbox[0, 1]) // 3,
+                    z_max=(nonzero_bbox[0, 0] + 2 * nonzero_bbox[0, 1]) // 3,
+                    z_mid=(nonzero_bbox[0, 0] + nonzero_bbox[0, 1]) // 2,
+                    z_mid_y_min=(2 * nonzero_bbox[1, 0] + nonzero_bbox[1, 1]) // 3,
+                    z_mid_y_max=(nonzero_bbox[1, 0] + 2 * nonzero_bbox[1, 1]) // 3,
+                    z_mid_x_min=(2 * nonzero_bbox[2, 0] + nonzero_bbox[2, 1]) // 3,
+                    z_mid_x_max=(nonzero_bbox[2, 0] + 2 * nonzero_bbox[2, 1]) // 3,
+                )
+            ]
 
         n_classes = len(bboxs)
         if num_classes_max is not None:
@@ -178,13 +175,15 @@ class SimplePredictor:
                     patch_sizes=patch_sizes,
                 )
                 crop_scaled_bbox_time += time.time() - start_time_crop_scaled_bbox
-            
+
                 class_cropped_im = cropped_im_and_scaled_bbox["image"]
                 class_cropped_bbox_chan = cropped_im_and_scaled_bbox["bbox_chan"]
                 class_cropped_prev_seg = cropped_im_and_scaled_bbox["segmentation"]
                 scaled_bbox_in_nonzero = cropped_im_and_scaled_bbox["scaled_orig_bbox"]
 
-                scaled_bbox_in_full_image = scaled_bbox_in_nonzero + nonzero_bbox[:, 0:1]
+                scaled_bbox_in_full_image = (
+                    scaled_bbox_in_nonzero + nonzero_bbox[:, 0:1]
+                )
                 # scale should be same throughout
                 scaled_bbox_size = np.diff(scaled_bbox_in_full_image, axis=1).squeeze(1)
                 scaled_bbox_scale = scaled_bbox_size / patch_sizes
@@ -281,7 +280,9 @@ class SimplePredictor:
                 forward_pass_time += time.time() - start_forward
 
                 this_pred_in_image = torch.full(
-                    (net_pred.shape[0],) + image.shape, torch.nan, device=net_pred.device
+                    (net_pred.shape[0],) + image.shape,
+                    torch.nan,
+                    device=net_pred.device,
                 )
                 pasted_pred = paste_tensor_leading_dim(
                     this_pred_in_image, net_pred, bbox=scaled_bbox_in_full_image
@@ -290,7 +291,7 @@ class SimplePredictor:
                 if self.device == "cuda":
                     torch.cuda.empty_cache()
                     torch.cuda.reset_peak_memory_stats()
-                    empty_cache(torch.device('cuda', 0))
+                    empty_cache(torch.device("cuda", 0))
                 gc.collect()
 
             except Exception as e:
