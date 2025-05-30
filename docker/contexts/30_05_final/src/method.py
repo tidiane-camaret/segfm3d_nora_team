@@ -14,6 +14,7 @@ from src.training.transforms import (
     crop_and_add_bbox,
     get_nonzero_bbox,
 )
+
 def compute_background_log_prob(logits):
     """
     Args:
@@ -319,6 +320,7 @@ class SimplePredictor:
         class_cropped_im = cropped_im_and_scaled_bbox["image"]
         class_cropped_prev_seg = cropped_im_and_scaled_bbox["segmentation"]
         scaled_bbox_in_nonzero = cropped_im_and_scaled_bbox["scaled_orig_bbox"]
+        del cropped_im_and_scaled_bbox
 
         scaled_bbox_in_full_image = scaled_bbox_in_nonzero + nonzero_bbox[:, 0:1]
         # scale should be same throughout
@@ -374,6 +376,7 @@ class SimplePredictor:
             clicks_mask = (
                 torch.sqrt(torch.sum(diffs**2, dim=0, keepdim=True)) < self.click_radius
             )
+            del z_indices, y_indices, x_indices, diffs
 
             if click_fg_or_bg == "fg":
                 pos_click_chan = pos_click_chan | clicks_mask
@@ -393,6 +396,7 @@ class SimplePredictor:
                 zero_chan,
             )
         ).to(device)
+        del resized_image, resized_prev_seg, resized_bbox_chan, zero_chan, pos_click_chan, neg_click_chan
         start_forward = time.time()
         net_pred = self.network(input_for_net[None])[0][0]
         forward_pass_time = time.time() - start_forward

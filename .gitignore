@@ -10,11 +10,11 @@
 
 /docker/images/
 
-/docker/contexts/docker_context
-/docker/contexts/docker_context_final/model
-/docker/contexts/docker_context_final/nnInteractive
+/docker/contexts/05_05
+/docker/contexts/29_05
 
-/docker/contexts/simple_method_30_05/model
+/docker/contexts/*/model
+
 
 
 /docker/submission/data
