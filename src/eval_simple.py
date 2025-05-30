@@ -133,14 +133,18 @@ def evaluate(
     output_dir = os.path.join(output_dir, method)
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
+    # randomize which cases are evaluated
+    np.random.shuffle(cases)
+
     """
     processed_cases = sorted([f for f in os.listdir(output_dir) if f.endswith(".npz")])
     remaining_cases = sorted(list(set(cases) - set(processed_cases)))
 
     cases = remaining_cases
     """
-    #cases = random.shuffle(cases)  # shuffle cases for reproducibility
-    cases = cases[:n_cases] if n_cases > 0 else cases  # limit number of cases to evaluate
+    # just now start at specific image to check error
+    
+    cases = cases[31:n_cases+31] if n_cases > 0 else cases  # limit number of cases to evaluate
 
 
     if len(cases) == 0:
