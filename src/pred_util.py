@@ -1,5 +1,13 @@
-from acvl_utils.cropping_and_padding.bounding_boxes import bounding_box_to_slice, crop_and_pad_nd
-from nnInteractive.utils.crop import crop_and_pad_into_buffer, paste_tensor, pad_cropped, crop_to_valid
+from acvl_utils.cropping_and_padding.bounding_boxes import (
+    bounding_box_to_slice,
+    crop_and_pad_nd,
+)
+from nnInteractive.utils.crop import (
+    crop_and_pad_into_buffer,
+    paste_tensor,
+    pad_cropped,
+    crop_to_valid,
+)
 from torch.nn.functional import interpolate
 from typing import Union, List, Tuple, Optional
 import torch
@@ -30,6 +38,9 @@ def paste_tensor_leading_dim(target: torch.Tensor, source: torch.Tensor, bbox):
     Returns:
         torch.Tensor: The target tensor after pasting in the source.
     """
+    assert target.ndim == 4
+    assert source.ndim == 4
+    assert len(bbox) == 3
     target_shape = target.shape[1:]  # (T0, T1, T2)
 
     # For each dimension compute:
@@ -54,24 +65,19 @@ def paste_tensor_leading_dim(target: torch.Tensor, source: torch.Tensor, bbox):
         target_indices.append((t_start, t_end))
         source_indices.append((s_start, s_end))
 
-    # Paste the corresponding region from source into target.
-    if isinstance(target, torch.Tensor):
-        target[:, target_indices[0][0]:target_indices[0][1],
-        target_indices[1][0]:target_indices[1][1],
-        target_indices[2][0]:target_indices[2][1]] = \
-            source[:, source_indices[0][0]:source_indices[0][1],
-            source_indices[1][0]:source_indices[1][1],
-            source_indices[2][0]:source_indices[2][1]].to(target.device)
-    else:
-        target[:, target_indices[0][0]:target_indices[0][1],
-        target_indices[1][0]:target_indices[1][1],
-        target_indices[2][0]:target_indices[2][1]] = \
-            source[:, source_indices[0][0]:source_indices[0][1],
-            source_indices[1][0]:source_indices[1][1],
-            source_indices[2][0]:source_indices[2][1]].cpu()
+    target[
+        :,
+        target_indices[0][0] : target_indices[0][1],
+        target_indices[1][0] : target_indices[1][1],
+        target_indices[2][0] : target_indices[2][1],
+    ] = source[
+        :,
+        source_indices[0][0] : source_indices[0][1],
+        source_indices[1][0] : source_indices[1][1],
+        source_indices[2][0] : source_indices[2][1],
+    ]
 
     return target
-
 
 
 def preproc_image(image):
@@ -85,66 +91,85 @@ def preproc_image(image):
     slicer = bounding_box_to_slice(bbox)  # Assuming this returns a tuple of slices.
     image_torch = image_torch[slicer].float()
 
-
     # Normalize the cropped image.
     image_torch -= image_torch.mean()
     image_torch /= image_torch.std()
-    preprocessed_props = {'bbox_used_for_cropping': bbox[1:]}
+    preprocessed_props = {"bbox_used_for_cropping": bbox[1:]}
     return image_torch, preprocessed_props
 
-def add_bbox_interaction(bbox_coords, interactions, preprocessed_props, image_shape, include_interaction: bool,
-                         only_2d_bbox: bool) -> np.ndarray:
-        
 
+def add_bbox_interaction(
+    bbox_coords,
+    interactions,
+    preprocessed_props,
+    image_shape,
+    include_interaction: bool,
+    only_2d_bbox: bool,
+) -> np.ndarray:
+    lbs_transformed = [
+        round(i)
+        for i in transform_coordinates_noresampling(
+            [i[0] for i in bbox_coords], preprocessed_props["bbox_used_for_cropping"]
+        )
+    ]
+    ubs_transformed = [
+        round(i)
+        for i in transform_coordinates_noresampling(
+            [i[1] for i in bbox_coords], preprocessed_props["bbox_used_for_cropping"]
+        )
+    ]
+    transformed_bbox_coordinates = [
+        [i, j] for i, j in zip(lbs_transformed, ubs_transformed)
+    ]
 
-        lbs_transformed = [round(i) for i in transform_coordinates_noresampling([i[0] for i in bbox_coords],
-                                                             preprocessed_props['bbox_used_for_cropping'])]
-        ubs_transformed = [round(i) for i in transform_coordinates_noresampling([i[1] for i in bbox_coords],
-                                                             preprocessed_props['bbox_used_for_cropping'])]
-        transformed_bbox_coordinates = [[i, j] for i, j in zip(lbs_transformed, ubs_transformed)]
+    for dim in range(len(transformed_bbox_coordinates)):
+        transformed_start, transformed_end = transformed_bbox_coordinates[dim]
 
-        for dim in range(len(transformed_bbox_coordinates)):
-            transformed_start, transformed_end = transformed_bbox_coordinates[dim]
+        # Clip to image boundaries
+        transformed_start = max(0, transformed_start)
+        transformed_end = min(
+            image_shape[dim + 1], transformed_end
+        )  # +1 to skip channel dim
 
-            # Clip to image boundaries
-            transformed_start = max(0, transformed_start)
-            transformed_end = min(image_shape[dim + 1], transformed_end)  # +1 to skip channel dim
+        # Ensure the bounding box does not collapse to a single point
+        if transformed_end <= transformed_start:
+            if transformed_start == 0:
+                transformed_end = min(1, image_shape[dim + 1])
+            else:
+                transformed_start = max(transformed_start - 1, 0)
 
-            # Ensure the bounding box does not collapse to a single point
-            if transformed_end <= transformed_start:
-                if transformed_start == 0:
-                    transformed_end = min(1, image_shape[dim + 1])
-                else:
-                    transformed_start = max(transformed_start - 1, 0)
+        transformed_bbox_coordinates[dim] = [transformed_start, transformed_end]
 
-            transformed_bbox_coordinates[dim] = [transformed_start, transformed_end]
-
-
-        # this is for 2d bbox
-        if only_2d_bbox:
-            z_mid = int(np.mean(transformed_bbox_coordinates[0]))
-            transformed_bbox_coordinates[0][0] = z_mid
-            transformed_bbox_coordinates[0][1] = z_mid + 1
-        # place bbox
-        slicer = tuple([slice(*i) for i in transformed_bbox_coordinates])
-        channel = -6 if include_interaction else -5
-        interactions[(channel, *slicer)] = 1
-        return interactions, transformed_bbox_coordinates
+    # this is for 2d bbox
+    if only_2d_bbox:
+        z_mid = int(np.mean(transformed_bbox_coordinates[0]))
+        transformed_bbox_coordinates[0][0] = z_mid
+        transformed_bbox_coordinates[0][1] = z_mid + 1
+    # place bbox
+    slicer = tuple([slice(*i) for i in transformed_bbox_coordinates])
+    channel = -6 if include_interaction else -5
+    interactions[(channel, *slicer)] = 1
+    return interactions, transformed_bbox_coordinates
 
 
 def transform_coordinates_noresampling(
-        coords_orig: Union[List[int], Tuple[int, ...]],
-        nnunet_preprocessing_crop_bbox: List[Tuple[int, int]]
+    coords_orig: Union[List[int], Tuple[int, ...]],
+    nnunet_preprocessing_crop_bbox: List[Tuple[int, int]],
 ) -> Tuple[int, ...]:
     """
     converts coordinates in the original uncropped image to the internal cropped representation. Man I really hate
     nnU-Net's crop to nonzero!
     """
-    return tuple([coords_orig[d] - nnunet_preprocessing_crop_bbox[d][0] for d in range(len(coords_orig))])
+    return tuple(
+        [
+            coords_orig[d] - nnunet_preprocessing_crop_bbox[d][0]
+            for d in range(len(coords_orig))
+        ]
+    )
 
 
 def pred_all_classes(network, image, boxes, do_autozoom, only_2d_bbox_interaction):
-    patch_size = (192,192,192)
+    patch_size = (192, 192, 192)
     use_pinned_memory = False
     device = next(network.parameters()).device
     all_preds = []

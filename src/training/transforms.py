@@ -241,18 +241,40 @@ class WrapMONAI:
         return self.transform(data_dict)
 
 
+def get_nonzero_bbox(image):
+    nonzero_coords = np.array(np.nonzero(image))
+    bbox = [
+        [start, stop]
+        for start, stop in zip(
+            np.min(nonzero_coords, axis=1),
+            np.max(nonzero_coords, axis=1) + 1,
+            strict=True,
+        )
+    ]
+    return np.array(bbox)
+
+
+def bbox_to_slicer(bbox):
+    slicer = [slice(start, stop) for start, stop in bbox]
+    return tuple(slicer)
+
+
+def get_nonzero_slicer(image):
+    bbox = get_nonzero_bbox(image)
+    return bbox_to_slicer(bbox)
+
+
+def crop_to_nonzero_image(image, segmentation):
+    slicer = get_nonzero_slicer(image)
+
+    image = image[tuple(slicer)]
+    segmentation = segmentation[tuple(slicer)]
+    return image, segmentation, slicer
+
+
 class CropToNonzeroImage:
     def __call__(self, image, segmentation):
-        nonzero_coords = np.array(np.nonzero(image))
-        slices = [
-            slice(start, stop)
-            for start, stop in zip(
-                np.min(nonzero_coords, axis=1), np.max(nonzero_coords, axis=1) + 1
-            )
-        ]
-
-        image = image[tuple(slices)]
-        segmentation = segmentation[tuple(slices)]
+        image, segmentation, _ = crop_to_nonzero_image(image, segmentation)
         return dict(image=image, segmentation=segmentation)
 
 
@@ -281,6 +303,87 @@ class AddEmptyChan:
         return {key: val[None] for key, val in data_dict.items()}
 
 
+def crop_and_add_bbox(image, bbox, segmentation, patch_sizes):
+    patch_sizes = np.array(patch_sizes)
+    bbox_chan = np.zeros_like(image).astype(bool)
+    bbox_chan[tuple(slice(i, j) for i, j in bbox)] = 1
+
+    bbox_center = np.mean(bbox, axis=1).round()
+
+    bbox_size = np.diff(bbox, axis=1).squeeze(1)
+
+    bbox_size_with_margin = bbox_size + patch_sizes / 3
+    # ensure the patch is large enough to capture bounding box
+    # and retains aspect ratio
+    zoom_out_factor = max(np.max(bbox_size_with_margin / patch_sizes), 1)
+    scaled_patch_size = np.ceil(patch_sizes * zoom_out_factor).astype(np.int32)
+
+    # compute i_starts and i_stops of cropping box
+    i_starts = np.int32(bbox_center - scaled_patch_size // 2)
+    i_stops = np.int32(i_starts + scaled_patch_size)
+
+    # to keep bbox in center we may have to pad sth before and after
+    # if cropping box is outside image
+    n_pad_before = np.clip(-i_starts, a_min=0, a_max=None).astype(np.int32)
+    n_pad_after = np.clip(i_stops - np.array(image.shape), a_min=0, a_max=None).astype(
+        np.int32
+    )
+    assert len(n_pad_before) == len(n_pad_after)
+    assert min(n_pad_before) >= 0
+    assert min(n_pad_after) >= 0
+
+    # now first crop, here ensure that you do not collapse any dim
+    # scaled_orig_bbox is just computed here additionally for eval
+    # this may go out of bounds of image, including negative values
+    scaled_orig_bbox = np.array(
+        [[i_start, i_stop] for i_start, i_stop in zip(i_starts, i_stops, strict=True)]
+    )
+    scaled_slicer = tuple(
+        slice(max(i, 0), max(j, 1)) for i, j in zip(i_starts, i_stops, strict=True)
+    )
+    cropped_img = image[scaled_slicer]
+    cropped_seg = segmentation[scaled_slicer]
+    cropped_bbox_chan = bbox_chan[scaled_slicer]
+
+    if (np.max(n_pad_before) > 0) or (np.max(n_pad_after) > 0):
+        padded_img = np.pad(
+            cropped_img,
+            tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+        )
+
+        padded_seg = np.pad(
+            cropped_seg,
+            tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+        )
+        padded_bbox_chan = np.pad(
+            cropped_bbox_chan,
+            tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+        )
+    else:
+        padded_img = cropped_img
+        padded_seg = cropped_seg
+        padded_bbox_chan = cropped_bbox_chan
+        scaled_orig_bbox= np.array([[0,patch_sizes[0]],[0,patch_sizes[1]],[0,patch_sizes[2]]])
+        scaled_slicer = tuple((slice(i,j) for i,j in scaled_orig_bbox))
+
+    assert np.sum(padded_bbox_chan) == np.sum(bbox_chan), (
+        "should be no loss of bounding box"
+    )
+    assert padded_img.shape == tuple(scaled_patch_size), (
+        f"Expected padded img shape:\n{padded_img.shape} to be same as "
+        f"scaled patch size:\n {tuple(scaled_patch_size)}"
+    )
+
+    assert padded_img.shape == padded_seg.shape == padded_bbox_chan.shape
+    return dict(
+        image=padded_img,
+        segmentation=padded_seg,
+        bbox_chan=padded_bbox_chan,
+        scaled_orig_bbox=scaled_orig_bbox,
+        scaled_slicer=scaled_slicer
+    )
+
+
 class CropAndAddBBox:
     def __call__(self, image, segmentation):
         assert segmentation.dtype == bool
@@ -305,71 +408,12 @@ class CropAndAddBBox:
                     ],
                 ]
             )
-
-            bbox_chan = np.zeros_like(image).astype(bool)
-            bbox_chan[tuple(slice(i, j) for i, j in bbox)] = 1
-
-            bbox_center = np.mean(bbox, axis=1).round()
-
-            bbox_size = np.diff(bbox, axis=1).squeeze(1)
-
-            bbox_size_with_margin = bbox_size + patch_sizes / 3
-            # ensure the patch is large enough to capture bounding box
-            # and retains aspect ratio
-            zoom_out_factor = max(np.max(bbox_size_with_margin / patch_sizes), 1)
-            scaled_patch_size = np.ceil(patch_sizes * zoom_out_factor).astype(np.int32)
-
-            # compute i_starts and i_stops of cropping box
-            i_starts = np.int32(bbox_center - scaled_patch_size // 2)
-            i_stops = np.int32(i_starts + scaled_patch_size)
-
-            # to keep bbox in center we may have to pad sth before and after
-            # if cropping box is outside image
-            n_pad_before = np.clip(-i_starts, a_min=0, a_max=None).astype(np.int32)
-            n_pad_after = np.clip(
-                i_stops - np.array(image.shape), a_min=0, a_max=None
-            ).astype(np.int32)
-            assert len(n_pad_before) == len(n_pad_after)
-            assert min(n_pad_before) >= 0
-            assert min(n_pad_after) >= 0
-
-            # now first crop, here ensure that you do not collapse any dim
-            scaled_slicer = tuple(
-                slice(max(i, 0), max(j, 1))
-                for i, j in zip(i_starts, i_stops, strict=True)
-            )
-            cropped_img = image[scaled_slicer]
-            cropped_seg = segmentation[scaled_slicer]
-            cropped_bbox_chan = bbox_chan[scaled_slicer]
-
-            if (np.max(n_pad_before) > 0) or (np.max(n_pad_after) > 0):
-                padded_img = np.pad(
-                    cropped_img,
-                    tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
-                )
-
-                padded_seg = np.pad(
-                    cropped_seg,
-                    tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
-                )
-                padded_bbox_chan = np.pad(
-                    cropped_bbox_chan,
-                    tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
-                )
-            else:
-                padded_img = cropped_img
-                padded_seg = cropped_seg
-                padded_bbox_chan = cropped_bbox_chan
-
-            assert np.sum(padded_bbox_chan) == np.sum(bbox_chan), (
-                "should be no loss of bounding box"
-            )
-            assert padded_img.shape == tuple(scaled_patch_size), (
-                f"Expected padded img shape:\n{padded_img.shape} to be same as "
-                f"scaled patch size:\n {tuple(scaled_patch_size)}"
-            )
-
+            image_seg_bbox = crop_and_add_bbox(image, bbox, segmentation, patch_sizes)
+            padded_img = image_seg_bbox["image"]
+            padded_seg = image_seg_bbox["segmentation"]
+            padded_bbox_chan = image_seg_bbox["bbox_chan"]
         else:
+            # let's just do center crop of empty image
             n_pad = np.clip(patch_sizes - np.array(image.shape), a_min=0, a_max=None)
             n_pad_before = n_pad // 2
             n_pad_after = n_pad - n_pad_before
@@ -377,7 +421,6 @@ class CropAndAddBBox:
                 image,
                 tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
             )
-            # let's do center crop
             i_starts = (
                 np.array(padded_img.shape) // 2 - patch_sizes // 2 - (patch_sizes % 2)
             )
@@ -393,7 +436,11 @@ class CropAndAddBBox:
             assert padded_img.shape == tuple(patch_sizes)
 
         assert padded_img.shape == padded_seg.shape == padded_bbox_chan.shape
-        return dict(image=padded_img, segmentation=padded_seg, bbox_chan=padded_bbox_chan)
+        return dict(
+            image=padded_img,
+            segmentation=padded_seg,
+            bbox_chan=padded_bbox_chan,
+        )
 
 
 class MergeImageAndInteractionAndSeg:
