@@ -8,11 +8,16 @@ import gc
 from nnunetv2.utilities.helpers import empty_cache
 import torch
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
-from src.training.transforms import crop_to_nonzero_image, bbox_to_slicer, get_nonzero_bbox
+from src.training.transforms import (
+    crop_to_nonzero_image,
+    bbox_to_slicer,
+    get_nonzero_bbox,
+)
 from src.training.transforms import NormalizeSingleImageTransformNumpy
 from src.training.transforms import crop_and_add_bbox
 from src.pred_util import paste_tensor_leading_dim
 from copy import deepcopy
+
 
 def compute_background_log_prob(logits):
     """
@@ -27,7 +32,7 @@ def compute_background_log_prob(logits):
 
     # Numerically stable: sum log(1 - p) instead of product
     log_bg_prob = torch.sum(torch.log1p(-probs), dim=0)  # log(1 - p) is log1p(-p)
-    
+
     return log_bg_prob
 
 
@@ -35,7 +40,6 @@ class SimplePredictor:
     """
     Predictor class using nnInteractive "as is".
     """
-    
 
     def __init__(self, checkpoint_path, device, include_previous_clicks):
         torch.set_grad_enabled(False)
@@ -59,7 +63,14 @@ class SimplePredictor:
                     [3, 3, 3],
                     [3, 3, 3],
                 ],
-                "strides": [[1, 1, 1], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2], [2, 2, 2]],
+                "strides": [
+                    [1, 1, 1],
+                    [2, 2, 2],
+                    [2, 2, 2],
+                    [2, 2, 2],
+                    [2, 2, 2],
+                    [2, 2, 2],
+                ],
                 "n_blocks_per_stage": [1, 3, 4, 6, 6, 6],
                 "n_conv_per_stage_decoder": [1, 1, 1, 1, 1],
                 "conv_bias": True,
@@ -82,8 +93,6 @@ class SimplePredictor:
         network.load_state_dict(chkpt_dict["network_weights"])
         self.network = network.to(device)
 
-            
-
     def predict(
         self,
         image,  # Full 3D image (NumPy ZYX)
@@ -99,7 +108,8 @@ class SimplePredictor:
     ):
         start_time = time.time()
         forward_pass_time = 0
-        
+        crop_scaled_bbox_time = 0
+
         device = self.device
         boxes = bboxs
 
@@ -108,7 +118,7 @@ class SimplePredictor:
         for class_clicks, class_order in zip(clicks[0], clicks[1]):
             this_clicks = deepcopy(class_clicks)
             click_dicts = []
-            
+
             for fg_or_bg in class_order:
                 coord = np.array(this_clicks[fg_or_bg].pop(0))
                 click_dicts.append(dict(fg_or_bg=fg_or_bg, coord=coord))
@@ -116,14 +126,13 @@ class SimplePredictor:
             # assert len(this_clicks["bg"]) == 0
             # assert len(this_clicks["fg"]) == 0
 
-        
         patch_sizes = np.array([192, 192, 192])
 
         all_preds = []
         n_classes = len(boxes)
         if num_classes_max is not None:
             n_classes = min(n_classes, num_classes_max)
-        
+
         nonzero_bbox = get_nonzero_bbox(image)
         nonzero_slicer = bbox_to_slicer(nonzero_bbox)
         nonzero_image = image[nonzero_slicer]
@@ -132,7 +141,7 @@ class SimplePredictor:
         ].astype(np.float32)
         for i_class in range(n_classes):
             try:
-                prev_seg = (prev_pred == (i_class + 1))
+                prev_seg = prev_pred == (i_class + 1)
                 nonzero_prev_seg = prev_seg[nonzero_slicer]
                 bbox_chan = np.zeros(image.shape, dtype=bool)
                 bbox_dict = bboxs[i_class]
@@ -151,17 +160,19 @@ class SimplePredictor:
                 class_bbox_in_nonzero = class_bbox - nonzero_bbox[:, 0:1]
                 # abuse a bit the fact here we have two images that go into this function
                 # "image" and "segmentation"
+                start_time_crop_scaled_bbox = time.time()
                 cropped_im_and_scaled_bbox = crop_and_add_bbox(
                     image=normed_image,
                     bbox=class_bbox_in_nonzero,
                     segmentation=nonzero_prev_seg,
                     patch_sizes=patch_sizes,
                 )
+                crop_scaled_bbox_time += time.time() - start_time_crop_scaled_bbox
+
                 class_cropped_im = cropped_im_and_scaled_bbox["image"]
                 class_cropped_bbox_chan = cropped_im_and_scaled_bbox["bbox_chan"]
                 class_cropped_prev_seg = cropped_im_and_scaled_bbox["segmentation"]
                 scaled_bbox_in_nonzero = cropped_im_and_scaled_bbox["scaled_orig_bbox"]
-
 
                 scaled_bbox_in_full_image = scaled_bbox_in_nonzero + nonzero_bbox[:, 0:1]
                 # scale should be same throughout
@@ -170,19 +181,33 @@ class SimplePredictor:
                 assert np.all(scaled_bbox_scale == scaled_bbox_scale[0])
 
                 resized_image = torch.nn.functional.interpolate(
-                    torch.tensor(class_cropped_im[None,None]), size=tuple(patch_sizes), mode="trilinear"
+                    torch.tensor(class_cropped_im[None, None]).to(self.device),
+                    size=tuple(patch_sizes),
+                    mode="trilinear",
                 ).squeeze(0)
                 resized_bbox_chan = torch.nn.functional.interpolate(
-                    torch.tensor(class_cropped_bbox_chan[None,None]).float(), size=tuple(patch_sizes), mode="nearest"
+                    torch.tensor(class_cropped_bbox_chan[None, None])
+                    .float()
+                    .to(self.device),
+                    size=tuple(patch_sizes),
+                    mode="nearest",
                 ).squeeze(0)
                 resized_prev_seg = torch.nn.functional.interpolate(
-                    torch.tensor(class_cropped_prev_seg[None,None]).float(), size=tuple(patch_sizes), mode="nearest"
+                    torch.tensor(class_cropped_prev_seg[None, None])
+                    .float()
+                    .to(self.device),
+                    size=tuple(patch_sizes),
+                    mode="nearest",
                 ).squeeze(0)
 
                 # compute clicks
                 all_clicks_this_class = ordered_clicks_per_class[i_class]
-                pos_click_chan = torch.zeros_like(resized_bbox_chan, dtype=bool, device=device)
-                neg_click_chan = torch.zeros_like(resized_bbox_chan, dtype=bool, device=device)
+                pos_click_chan = torch.zeros_like(
+                    resized_bbox_chan, dtype=bool, device=device
+                )
+                neg_click_chan = torch.zeros_like(
+                    resized_bbox_chan, dtype=bool, device=device
+                )
 
                 if self.include_previous_clicks:
                     wanted_clicks = all_clicks_this_class
@@ -193,10 +218,11 @@ class SimplePredictor:
                     click_coord = one_click["coord"]
                     click_fg_or_bg = one_click["fg_or_bg"]
 
-                    click_coord_in_bbox = np.array(click_coord) - scaled_bbox_in_full_image[:,0]
+                    click_coord_in_bbox = (
+                        np.array(click_coord) - scaled_bbox_in_full_image[:, 0]
+                    )
 
                     click_coord_scaled = click_coord_in_bbox / scaled_bbox_scale
-
 
                     z_indices, y_indices, x_indices = torch.meshgrid(
                         torch.arange(resized_bbox_chan.shape[1], device=device),
@@ -206,7 +232,9 @@ class SimplePredictor:
                     )
                     diffs = (
                         torch.stack((z_indices, y_indices, x_indices))
-                        - torch.tensor(click_coord_scaled, device=device)[:, None,None,None]
+                        - torch.tensor(click_coord_scaled, device=device)[
+                            :, None, None, None
+                        ]
                     )
                     clicks_mask = (
                         torch.sqrt(torch.sum(diffs**2, dim=0, keepdim=True))
@@ -233,13 +261,14 @@ class SimplePredictor:
                 ).to(device)
                 start_forward = time.time()
                 net_pred = self.network(input_for_net[None])[0][0]
-                forward_pass_time += (time.time() - start_forward)
                 forward_pass_count += 1
                 if not np.all(np.array(net_pred.shape[1:]) == scaled_bbox_size):
                     print("Rescaling pred")
                     net_pred = torch.nn.functional.interpolate(
                         net_pred[None], list(scaled_bbox_size), mode="trilinear"
                     )[0]
+                # _ = net_pred.cpu().numpy() # just for time checking
+                forward_pass_time += time.time() - start_forward
 
                 this_pred_in_image = torch.full(
                     (net_pred.shape[0],) + image.shape, torch.nan, device=net_pred.device
@@ -248,25 +277,28 @@ class SimplePredictor:
                     this_pred_in_image, net_pred, bbox=scaled_bbox_in_full_image
                 )
                 all_preds.append(pasted_pred)
-            except:
+            except Exception as e:
+                print(f"Error on class {i_class + 1}:", e)
                 fake_pred = torch.zeros((2,) + image.shape, device=device)
                 # predict this class as not existing
-                fake_pred[:,1] = -torch.inf
+                fake_pred[:, 1] = -torch.inf
                 all_preds.append(fake_pred)
         logits_per_class = torch.nan_to_num(
-            torch.diff(torch.stack(all_preds), axis=1)[:,0],
-            -torch.inf)
-        bg_log_prob_1 = compute_background_log_prob(logits_per_class)
-        logits_with_background = torch.cat(
-            (bg_log_prob_1[None], logits_per_class)
+            torch.diff(torch.stack(all_preds), axis=1)[:, 0], -torch.inf
         )
+        bg_log_prob_1 = compute_background_log_prob(logits_per_class)
+        logits_with_background = torch.cat((bg_log_prob_1[None], logits_per_class))
         full_seg = logits_with_background.argmax(dim=0).cpu().numpy()
 
         total_time = time.time() - start_time
-        print(f"Finished predicting in {total_time}, {forward_pass_time} in forward ({(forward_pass_time / total_time):.1%})")
+        print(
+            f"Finished predicting in {total_time:.2}, {forward_pass_time:.2} in forward amd rescale ({(forward_pass_time / total_time):.1%}),",
+            f"{crop_scaled_bbox_time:.2} in cropping with bbox ({(crop_scaled_bbox_time / total_time):.1%})",
+        )
 
-        prediction_metrics = {"infer_time": total_time,
-                "forward_pass_count": forward_pass_count}
-        
+        prediction_metrics = {
+            "infer_time": total_time,
+            "forward_pass_count": forward_pass_count,
+        }
+
         return full_seg, prediction_metrics
-    
