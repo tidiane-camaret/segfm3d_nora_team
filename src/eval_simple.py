@@ -124,8 +124,16 @@ def evaluate(
         )
     elif method == "simple":
         from src.method import SimplePredictor
-        trained_checkpoint_path = '/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_4_2025-05-30_12-27-37-246.pth'#'/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_5_2025-05-30_07-44-18-169.pth'
-        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=3)
+        
+        # trained_checkpoint_path = '/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_4_2025-05-30_12-27-37-246.pth'#'/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_5_2025-05-30_07-44-18-169.pth'
+        # trained_checkpoint_path = "/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_7_2025-05-30_14-48-10-411.pth"
+        trained_checkpoint_path = "/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_11_2025-05-30_17-56-57-428.pth"
+        
+        predictor = SimplePredictor(
+            trained_checkpoint_path,
+            device="cuda",
+            include_previous_clicks=True, n_pred_iters=1
+        )
     else:
         raise ValueError(f"Unknown method: {method}.")
 
