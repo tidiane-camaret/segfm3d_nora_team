@@ -198,3 +198,30 @@ class NPZDataset(nnUNetBaseDataset):
 
     def save_case():
         raise NotImplementedError("not implemented")
+
+
+class NPZNoCacheDataset(torch.utils.data.Dataset):
+    def __init__(self, files, transform):
+        self.files = files
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        filepath = self.files[idx]
+        img_and_seg  = self.load_file(filepath)
+        if self.transform is not None:
+            img_and_seg = self.transform(**img_and_seg)
+        return dict(**img_and_seg, filepath=filepath)
+
+    @staticmethod
+    def load_file(filepath):
+        image_and_gts = np.load(filepath)
+        seg = image_and_gts["gts"].astype(np.uint8)
+        img = image_and_gts["imgs"].astype(np.float32)
+
+        assert img.ndim == 3
+        assert seg.ndim == 3
+        return dict(image=img, segmentation=seg)
+
+        
+    def __len__(self):
+        return len(self.files)
