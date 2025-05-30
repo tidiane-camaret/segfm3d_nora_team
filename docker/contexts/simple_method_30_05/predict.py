@@ -8,7 +8,8 @@ from src.method import SimplePredictor
 predictor = SimplePredictor(
             checkpoint_path="model/checkpoint_4_2025-05-30_12-27-37-246.pth",
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-            include_previous_clicks=True,)
+            include_previous_clicks=True,
+            n_pred_iters= 1)
 
 for filename in os.listdir('inputs'): # the eval script copies each volume to this directory sequentially
     if filename.endswith('.npz'):

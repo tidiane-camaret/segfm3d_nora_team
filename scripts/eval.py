@@ -316,10 +316,8 @@ def evaluate(
 
                 segs, prediction_metrics = predictor.predict(
                     image=image,
-                    spacing=spacing,
                     bboxs=boxes,
                     clicks=(clicks_cls, clicks_order),
-                    is_bbox_iteration=it == 0,
                     prev_pred=segs,  # Pass previous prediction
                     num_classes_max=n_classes_max,
                 )
