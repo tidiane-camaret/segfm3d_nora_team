@@ -123,9 +123,17 @@ class SimplePredictor:
         n_classes = len(boxes)
         if num_classes_max is not None:
             n_classes = min(n_classes, num_classes_max)
+        
+        nonzero_bbox = get_nonzero_bbox(image)
+        nonzero_slicer = bbox_to_slicer(nonzero_bbox)
+        nonzero_image = image[nonzero_slicer]
+        normed_image = NormalizeSingleImageTransformNumpy()(image=nonzero_image)[
+            "image"
+        ].astype(np.float32)
         for i_class in range(n_classes):
             try:
                 prev_seg = (prev_pred == (i_class + 1))
+                nonzero_prev_seg = prev_seg[nonzero_slicer]
                 bbox_chan = np.zeros(image.shape, dtype=bool)
                 bbox_dict = bboxs[i_class]
 
@@ -139,14 +147,6 @@ class SimplePredictor:
 
                 # fill bbox
                 bbox_chan[bbox_to_slicer(class_bbox)] = 1
-
-                nonzero_bbox = get_nonzero_bbox(image)
-                nonzero_slicer = bbox_to_slicer(nonzero_bbox)
-                nonzero_image = image[nonzero_slicer]
-                nonzero_prev_seg = prev_seg[nonzero_slicer]
-                normed_image = NormalizeSingleImageTransformNumpy()(image=nonzero_image)[
-                    "image"
-                ].astype(np.float32)
 
                 class_bbox_in_nonzero = class_bbox - nonzero_bbox[:, 0:1]
                 # abuse a bit the fact here we have two images that go into this function
@@ -252,7 +252,7 @@ class SimplePredictor:
                 fake_pred = torch.zeros((2,) + image.shape, device=device)
                 # predict this class as not existing
                 fake_pred[:,1] = -torch.inf
-                all_preds.append(torch)
+                all_preds.append(fake_pred)
         logits_per_class = torch.nan_to_num(
             torch.diff(torch.stack(all_preds), axis=1)[:,0],
             -torch.inf)
