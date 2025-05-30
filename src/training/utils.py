@@ -4,6 +4,10 @@ import threading
 import torch
 import numpy as np
 import hashlib
+import os
+import numpy as np
+import random
+
 
 @contextmanager
 def defer_keysignal():
@@ -67,3 +71,17 @@ def fast_id_to_deterministic_float(id):
 
 
 fast_ids_to_deterministic_floats = np.vectorize(fast_id_to_deterministic_float)
+
+
+def set_all_seeds(seed: int, cuda=True):
+    """
+    Sets the random seed for Python, NumPy, and PyTorch (CPU and GPU).
+    Also configures PyTorch for full determinism if available.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    torch.manual_seed(seed)
+    if cuda:
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)

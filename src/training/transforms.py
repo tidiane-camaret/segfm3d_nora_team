@@ -15,6 +15,16 @@ from monai.transforms import (
 )
 
 
+class NormalizeSingleImageTransformNumpy(AbstractTransform):
+    def __call__(self, **data_dict):
+        img = data_dict["image"]
+        assert img.ndim == 3
+        eps = 1e-6
+        normed_img = (img - np.mean(img)) / (np.std(img) + eps)
+        data_dict["image"] = normed_img
+        return data_dict
+
+
 class NormalizeSingleImageTransform(AbstractTransform):
     def __call__(self, **data_dict):
         imgs = data_dict["image"]
@@ -125,15 +135,15 @@ class AddBBoxAndEmptyChannelsSingleClassTransform(AbstractTransform):
                 prompt_channels[
                     1,
                     bbox["z_mid"],
-                    bbox['z_mid_y_min']:bbox['z_mid_y_max'],
-                    bbox['z_mid_x_min']:bbox['z_mid_x_max'],
+                    bbox["z_mid_y_min"] : bbox["z_mid_y_max"],
+                    bbox["z_mid_x_min"] : bbox["z_mid_x_max"],
                 ] = 1
             else:
                 prompt_channels[
                     1,
-                    bbox['z_min']:bbox['z_max'],
-                    bbox['z_mid_y_min']:bbox['z_mid_y_max'],
-                    bbox['z_mid_x_min']:bbox['z_mid_x_max'],
+                    bbox["z_min"] : bbox["z_max"],
+                    bbox["z_mid_y_min"] : bbox["z_mid_y_max"],
+                    bbox["z_mid_x_min"] : bbox["z_mid_x_max"],
                 ] = 1
 
         # Concatenate the original image with the prompt channels,
@@ -166,7 +176,12 @@ class AddSegToImageTransform(AbstractTransform):
 
 
 class MONAIRandSpatialTransform:
-    def __init__(self, rotate_range=(0.52,0.52,0.52), scale_range=(0.3,0.3,0.3), prob_affine=0.2):
+    def __init__(
+        self,
+        rotate_range=(0.52, 0.52, 0.52),
+        scale_range=(0.3, 0.3, 0.3),
+        prob_affine=0.2,
+    ):
         self.rotate_range = rotate_range
         self.scale_range = scale_range
         self.prob_affine = prob_affine
@@ -216,3 +231,181 @@ class MONAIFixedSpatialTransform:
         )
 
         return transform(data_dict)
+
+
+class WrapMONAI:
+    def __init__(self, transform):
+        self.transform = transform
+
+    def __call__(self, **data_dict):
+        return self.transform(data_dict)
+
+
+class CropToNonzeroImage:
+    def __call__(self, image, segmentation):
+        nonzero_coords = np.array(np.nonzero(image))
+        slices = [
+            slice(start, stop)
+            for start, stop in zip(
+                np.min(nonzero_coords, axis=1), np.max(nonzero_coords, axis=1) + 1
+            )
+        ]
+
+        image = image[tuple(slices)]
+        segmentation = segmentation[tuple(slices)]
+        return dict(image=image, segmentation=segmentation)
+
+
+class ChooseClass:
+    def __init__(self, fixed_class=None):
+        self.fixed_class = fixed_class
+
+    def __call__(self, image, segmentation):
+        if np.max(segmentation) > 0:
+            if self.fixed_class is None:
+                uniq_classes = [c for c in np.unique(segmentation) if c != 0]
+                wanted_class_idx = np.random.choice(uniq_classes)
+            else:
+                wanted_class_idx = self.fixed_class
+            segmentation = segmentation == wanted_class_idx
+        else:
+            segmentation = segmentation.astype(bool)
+        return dict(image=image, segmentation=segmentation)
+
+
+class AddEmptyChan:
+    def __init__(self, fixed_class=None):
+        self.fixed_class = fixed_class
+
+    def __call__(self, **data_dict):
+        return {key: val[None] for key, val in data_dict.items()}
+
+
+class CropAndAddBBox:
+    def __call__(self, image, segmentation):
+        assert segmentation.dtype == bool
+        patch_sizes = np.array([192, 192, 192])
+        if np.any(segmentation):
+            bbox_dict = mask3D_to_bbox(segmentation)
+
+            # make into simpler 3 x 2 (dims x start/stop) numpy array for later calculations
+            bbox = np.array(
+                [
+                    [
+                        bbox_dict["z_min"],
+                        bbox_dict["z_max"],
+                    ],
+                    [
+                        bbox_dict["z_mid_y_min"],
+                        bbox_dict["z_mid_y_max"],
+                    ],
+                    [
+                        bbox_dict["z_mid_x_min"],
+                        bbox_dict["z_mid_x_max"],
+                    ],
+                ]
+            )
+
+            bbox_chan = np.zeros_like(image).astype(bool)
+            bbox_chan[tuple(slice(i, j) for i, j in bbox)] = 1
+
+            bbox_center = np.mean(bbox, axis=1).round()
+
+            bbox_size = np.diff(bbox, axis=1).squeeze(1)
+
+            bbox_size_with_margin = bbox_size + patch_sizes / 3
+            # ensure the patch is large enough to capture bounding box
+            # and retains aspect ratio
+            zoom_out_factor = max(np.max(bbox_size_with_margin / patch_sizes), 1)
+            scaled_patch_size = np.ceil(patch_sizes * zoom_out_factor).astype(np.int32)
+
+            # compute i_starts and i_stops of cropping box
+            i_starts = np.int32(bbox_center - scaled_patch_size // 2)
+            i_stops = np.int32(i_starts + scaled_patch_size)
+
+            # to keep bbox in center we may have to pad sth before and after
+            # if cropping box is outside image
+            n_pad_before = np.clip(-i_starts, a_min=0, a_max=None).astype(np.int32)
+            n_pad_after = np.clip(
+                i_stops - np.array(image.shape), a_min=0, a_max=None
+            ).astype(np.int32)
+            assert len(n_pad_before) == len(n_pad_after)
+            assert min(n_pad_before) >= 0
+            assert min(n_pad_after) >= 0
+
+            # now first crop, here ensure that you do not collapse any dim
+            scaled_slicer = tuple(
+                slice(max(i, 0), max(j, 1))
+                for i, j in zip(i_starts, i_stops, strict=True)
+            )
+            cropped_img = image[scaled_slicer]
+            cropped_seg = segmentation[scaled_slicer]
+            cropped_bbox_chan = bbox_chan[scaled_slicer]
+
+            if (np.max(n_pad_before) > 0) or (np.max(n_pad_after) > 0):
+                padded_img = np.pad(
+                    cropped_img,
+                    tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+                )
+
+                padded_seg = np.pad(
+                    cropped_seg,
+                    tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+                )
+                padded_bbox_chan = np.pad(
+                    cropped_bbox_chan,
+                    tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+                )
+            else:
+                padded_img = cropped_img
+                padded_seg = cropped_seg
+                padded_bbox_chan = cropped_bbox_chan
+
+            assert np.sum(padded_bbox_chan) == np.sum(bbox_chan), (
+                "should be no loss of bounding box"
+            )
+            assert padded_img.shape == tuple(scaled_patch_size), (
+                f"Expected padded img shape:\n{padded_img.shape} to be same as "
+                f"scaled patch size:\n {tuple(scaled_patch_size)}"
+            )
+
+        else:
+            n_pad = np.clip(patch_sizes - np.array(image.shape), a_min=0, a_max=None)
+            n_pad_before = n_pad // 2
+            n_pad_after = n_pad - n_pad_before
+            padded_img = np.pad(
+                image,
+                tuple((n_a, n_b) for n_a, n_b in zip(n_pad_before, n_pad_after)),
+            )
+            # let's do center crop
+            i_starts = (
+                np.array(padded_img.shape) // 2 - patch_sizes // 2 - (patch_sizes % 2)
+            )
+            i_starts = np.clip(i_starts, a_min=0, a_max=None).astype(np.int32)
+            i_stops = i_starts + patch_sizes
+            padded_img = padded_img[
+                i_starts[0] : i_stops[0],
+                i_starts[1] : i_stops[1],
+                i_starts[2] : i_stops[2],
+            ]
+            padded_seg = np.zeros_like(padded_img).astype(bool)
+            padded_bbox_chan = np.zeros_like(padded_img).astype(bool)
+            assert padded_img.shape == tuple(patch_sizes)
+
+        assert padded_img.shape == padded_seg.shape == padded_bbox_chan.shape
+        return dict(image=padded_img, segmentation=padded_seg, bbox_chan=padded_bbox_chan)
+
+
+class MergeImageAndInteractionAndSeg:
+    def __call__(self, **data_dict):
+        image = data_dict["image"]
+        segmentation = data_dict["segmentation"]
+        bbox_chan = data_dict["bbox_chan"]
+        # img, 1 prompt chan, bbox chan, 5 prompt chans, seg
+        full_image = torch.cat(
+            (image, torch.zeros_like(image), bbox_chan)
+            + tuple(torch.zeros_like(image) for _ in range(5))
+            + (segmentation,)
+        )
+        data_dict["image"] = full_image
+        return data_dict
