@@ -123,9 +123,9 @@ def evaluate(
         verbose=verbose,
         )
     elif method == "simple":
-        from src.methods.simple import SimplePredictor
+        from src.method import SimplePredictor
         trained_checkpoint_path = '/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_4_2025-05-30_12-27-37-246.pth'#'/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_5_2025-05-30_07-44-18-169.pth'
-        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True)
+        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=3)
     else:
         raise ValueError(f"Unknown method: {method}.")
 
@@ -133,8 +133,6 @@ def evaluate(
     output_dir = os.path.join(output_dir, method)
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
-    # randomize which cases are evaluated
-    np.random.shuffle(cases)
 
     """
     processed_cases = sorted([f for f in os.listdir(output_dir) if f.endswith(".npz")])
@@ -144,7 +142,10 @@ def evaluate(
     """
     # just now start at specific image to check error
     
-    cases = cases[31:n_cases+31] if n_cases > 0 else cases  # limit number of cases to evaluate
+    # randomize which cases are evaluated
+    # np.random.shuffle(cases)
+    # cases = cases[7:n_cases+7] if n_cases > 0 else cases  # limit number of cases to evaluate
+    cases = cases[:n_cases]
 
 
     if len(cases) == 0:
@@ -318,10 +319,10 @@ def evaluate(
 
                 segs, prediction_metrics = predictor.predict(
                     image=image,
-                    spacing=spacing,
+                    # spacing=spacing,
                     bboxs=boxes,
                     clicks=(clicks_cls, clicks_order),
-                    is_bbox_iteration=it == 0,
+                    # is_bbox_iteration=it == 0,
                     prev_pred=segs,  # Pass previous prediction
                     num_classes_max=n_classes_max,
                 )
