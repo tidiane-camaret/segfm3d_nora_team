@@ -12,7 +12,22 @@ import os
 import random
 
 from src.config import config
-#from src.eval import evaluate
+
+import traceback
+from collections import OrderedDict
+
+import cc3d
+import numpy as np
+import torch
+import wandb
+from scipy import integrate
+from src.eval_metrics import (  # TODO : Use the competition repo as source instead
+    compute_edt,
+    compute_multi_class_dsc,
+    compute_multi_class_nsd,
+    sample_coord,
+)
+from tqdm import tqdm
 
 random.seed(42)
 
@@ -30,6 +45,7 @@ def evaluate(
     verbose=False,
     save_segs=True,
     checkpoint_path=None,  # used in nnint_custom
+    add_previous_clicks=True,  # used in nnint_custom
 ):
     torch.set_grad_enabled(False)  # Disable gradient calculation for inference
     if save_segs:
@@ -111,7 +127,7 @@ def evaluate(
     elif method == "simple":
         from src.methods.simple import SimplePredictor
         trained_checkpoint_path = '/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_4_2025-05-30_12-27-37-246.pth'#'/nfs/data/nii/data1/Analysis/GPUnet/ANALYSIS_segfm-robin/data/model-checkpoints/new-dataset/fold_0/checkpoint_5_2025-05-30_07-44-18-169.pth'
-        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True)
+        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=add_previous_clicks)
     else:
         raise ValueError(f"Unknown method: {method}.")
 
@@ -498,7 +514,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--add_previous_clicks",
+        "--no_previous_clicks",
         action="store_true",
         help="Add previous clicks to the current click input (for nnint_custom)",
     )
@@ -518,5 +534,5 @@ if __name__ == "__main__":
         verbose=args.verbose,
         save_segs=args.save_segs,
         checkpoint_path=args.checkpoint_path,  # used in nnint_custom
-        add_previous_clicks= args.add_previous_clicks
+        add_previous_clicks= not args.no_previous_clicks
     )
