@@ -13,6 +13,8 @@
 /docker_submission/outputs
 /docker_submission/inputs
 /docker_submission/test/outputs
+/docker_submission/dist_linux
+
 /singularity_submission/inputs
 __pycache__
 config.yaml
