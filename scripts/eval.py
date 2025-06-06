@@ -10,7 +10,7 @@ The rest of the logic should stay the same
 import argparse
 import os
 import random
-
+import pandas as pd
 from src.config import config
 
 import traceback
@@ -68,16 +68,30 @@ def evaluate(
                 "checkpoint_name": os.path.basename(checkpoint_path) if checkpoint_path else None,
             },
         )
-        # Define metrics for WandB summary
+            # Define metrics for WandB summary
         wandb.define_metric("Case/DSC_AUC", summary="mean")
         wandb.define_metric("Case/NSD_AUC", summary="mean")
         wandb.define_metric("Case/DSC_Final", summary="mean")
         wandb.define_metric("Case/NSD_Final", summary="mean")
         wandb.define_metric("Case/TotalRunningTime", summary="mean")
-        wandb.define_metric("Iteration")
+        wandb.define_metric("Case/NumClasses", summary="mean")
+
+        # Define step metrics
+        wandb.define_metric("Iteration")  # Step for iteration-wise metrics
+        wandb.define_metric("CaseStep")   # Step for case-wise metrics
+
+        # Iteration-wise metrics
         wandb.define_metric("DSC", step_metric="Iteration")
         wandb.define_metric("NSD", step_metric="Iteration")
         wandb.define_metric("RunningTime", step_metric="Iteration")
+
+        # Case-wise metrics
+        wandb.define_metric("Case/DSC_AUC", step_metric="CaseStep")
+        wandb.define_metric("Case/NSD_AUC", step_metric="CaseStep")
+        wandb.define_metric("Case/DSC_Final", step_metric="CaseStep")
+        wandb.define_metric("Case/NSD_Final", step_metric="CaseStep")
+        wandb.define_metric("Case/TotalRunningTime", step_metric="CaseStep")
+        wandb.define_metric("Case/NumClasses", step_metric="CaseStep")
 
     ### Load the method ###
 
@@ -135,12 +149,12 @@ def evaluate(
     output_dir = os.path.join(output_dir, method)
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
-    """
+
     processed_cases = sorted([f for f in os.listdir(output_dir) if f.endswith(".npz")])
     remaining_cases = sorted(list(set(cases) - set(processed_cases)))
 
     cases = remaining_cases
-    """
+
     #cases = random.shuffle(cases)  # shuffle cases for reproducibility
     cases = cases[:n_cases] if n_cases > 0 else cases  # limit number of cases to evaluate
 
@@ -178,8 +192,8 @@ def evaluate(
             "NSD_4": [],
             "NSD_5": [],
             "NSD_6": [],
-            "num_class": [],
-            "runtime_upperbound": [],
+            #"num_class": [],
+            #"runtime_upperbound": [],
         }
     )
 
@@ -340,20 +354,20 @@ def evaluate(
                 metric_temp[f"NSD_{it + 1}"] = nsd
                 print("Dice", dsc, "NSD", nsd)
                 if use_wandb:
-                    wandb.log(
-                        {
-                            "Iteration": it,
-                            "Case": case_name,
-                            "DSC": dscs[it] if it < len(dscs) else 0,
-                            "NSD": nsds[it] if it < len(nsds) else 0,
-                            "RunningTime": (
+                    wandb.log({
+                        "Iteration": it,
+                        "Case": case_name, 
+                        "DSC": dsc,
+                        "NSD": nsd,
+                        "RunningTime": (
                                 metric_temp[f"RunningTime_{it + 1}"]
                                 if f"RunningTime_{it + 1}" in metric_temp
                                 else 0
                             ),
-                            "Forward pass count": prediction_metrics["forward_pass_count"]
-                        }
-                    )
+                        "Forward pass count": prediction_metrics["forward_pass_count"]
+
+                    })
+
 
             all_segs.append(segs.astype(np.uint8))
 
@@ -386,15 +400,15 @@ def evaluate(
             metric["NSD_Final"].append(nsd_final)
 
             # Save the metric file to output_dir
-            """ 
-            metric_df = pd.DataFrame(metric) -> Error in /software/anaconda3/envs/segfm3d_2/lib/python3.12/site-packages/pandas/core/internals/construction.py, line 677, in _extract_index: All arrays must be of the same length
-            TODO : Look at the dataframe
+            
+            metric_df = pd.DataFrame(metric) #-> Error in /software/anaconda3/envs/segfm3d_2/lib/python3.12/site-packages/pandas/core/internals/construction.py, line 677, in _extract_index: All arrays must be of the same length
+            #TODO : Look at the dataframe
             
             
             metric_df.to_csv(
                 os.path.join(output_dir, "norateam_metrics.csv"), index=False
             )
-            """
+            
 
             if save_segs:
                 np.savez_compressed(
@@ -410,18 +424,19 @@ def evaluate(
                 wandb_gt = gts[gts.shape[0] // 2, :, :]
 
                 # Save the middle slice image
+                case_step = len(metric['CaseName'])  # Current case number
 
                 wandb.log(
                     {
-                        "Case/DSC_AUC": dsc_auc,
-                        "Case/NSD_AUC": nsd_auc,
-                        "Case/DSC_Final": dsc_final,
-                        "Case/NSD_Final": nsd_final,
-                        "Case/TotalRunningTime": real_running_time,
-                        "Case_name": case_name,
-                        "Case/NumClasses": n_classes,
-                        "Case/NumClassesUsed": n_classes_max,
-                        "Segmentation": wandb.Image(
+                    "CaseStep": case_step,
+                    "Case/DSC_AUC": dsc_auc,
+                    "Case/NSD_AUC": nsd_auc,
+                    "Case/DSC_Final": dsc_final,
+                    "Case/NSD_Final": nsd_final,
+                    "Case/TotalRunningTime": real_running_time,
+                    "Case/NumClasses": n_classes,
+                    "Case_name": case_name,
+                    "Segmentation": wandb.Image(
                             wandb_img,
                             masks={
                                 "predictions": {
