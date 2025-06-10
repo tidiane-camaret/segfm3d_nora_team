@@ -12,35 +12,38 @@ pip install torch nnunetv2 monai wandb scikit-image scikit-learn matplotlib open
 ```
 
 ## Dowloading the data
-To download the data, you can use the huggingface-cli :
+It is now possible to download the competition data using the huggingface-cli package :
 
 ```bash
 huggingface-cli download junma/CVPR-BiomedSegFM --repo-type dataset
 ```
 
 ## Training the model
+
 ```python
 python scripts/train.py
 ```
 
 ## Local evaluation Script
 
-`scripts/eval.py` runs the evaluation protocol locally, mimicking the competition's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
+```python
+scripts/eval.py 
+```
+This command runs the evaluation protocol locally, mimicking the competition's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
 
 **Fast Evaluation for Debugging:**
 
 To run a quick test on a single case ( `-ca 1`), with only the bounding box iteration (`-cl 0`), predicting only the first class (`-ncm 1`), and without logging to Weights & Biases (`--no_wandb`):
 
 ```bash
-# Ensure you are in an environment managed by uv (already present in Meta's workspace : /work/dlclarge2/ndirt-SegFM3D )
-uv run python scripts/eval.py -ca 1 -cl 1 -ncm 1 --no_wandb
+python scripts/eval.py -ca 1 -cl 1 -ncm 1 --no_wandb
 ```
 
 
 
 ## Methods  
 
-```--method``` tag
+One can specify the method used by the eval script using the```--method``` tag :
 
 ```simple```
 our approach for the competition. Use --checkpoint_path to specify the path to the trained model checkpoint. 
