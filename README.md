@@ -2,10 +2,26 @@
 
 Repository for our participation in the Interactive 3D Segmentation Challenge (CVPR 2025: Foundation Models for Interactive 3D Biomedical Image Segmentation).
 
+## Requirements
+```bash
+# Create a conda environment
+conda create -n segfm3d python=3.12
+conda activate segfm3d
+# Install the required packages
+pip install torch nnunetv2 monai wandb scikit-image scikit-learn matplotlib opencv-python tqdm
+```
+
+## Dowloading the data
+To download the data, you can use the huggingface-cli :
+
+```bash
+huggingface-cli download junma/CVPR-BiomedSegFM --repo-type dataset
+```
 
 ## Training the model
-
-`python scripts/train.py`
+```python
+python scripts/train.py
+```
 
 ## Local evaluation Script
 
