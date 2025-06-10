@@ -15,8 +15,6 @@
 
 /docker/contexts/*/model
 
-
-
 /docker/submission/data
 /docker/submission/dist_linux
 /docker/submission/outputs
@@ -25,9 +23,9 @@
 /docker/submission/test/inputs
 /docker/submission/wandb
 
-/singularity_submission/inputs
+/docs
+
 __pycache__
 config.yaml
 cufile.log
 /lightning_logs
-docker_submission/test/outputs/CT_AbdomenAtlas_BDMAP_00000006.npz
