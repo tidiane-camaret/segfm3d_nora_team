@@ -1,5 +1,4 @@
 import os
-
 import torch
 from src.config import config
 
@@ -274,7 +273,6 @@ for batch in (pbar := tqdm(test_loader)):
             cent=cent.item(),
         )
     )
-display(pd.DataFrame(test_results).mean())
 test_result_filepath = os.path.join(
     os.path.split(trained_chkpt_path)[0],
     f"test_results_{i_epoch}_{filename_time_str}.csv",

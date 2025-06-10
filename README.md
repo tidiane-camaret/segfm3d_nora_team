@@ -2,9 +2,14 @@
 
 Repository for our participation in the Interactive 3D Segmentation Challenge (CVPR 2025: Foundation Models for Interactive 3D Biomedical Image Segmentation).
 
+
+## Training the model
+
+`python scripts/train.py`
+
 ## Local evaluation Script
 
-This script (`scripts/eval.py`) runs the evaluation protocol locally, mimicking the competition's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
+`scripts/eval.py` runs the evaluation protocol locally, mimicking the competition's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
 
 **Fast Evaluation for Debugging:**
 
@@ -20,6 +25,9 @@ uv run python scripts/eval.py -ca 1 -cl 1 -ncm 1 --no_wandb
 ## Methods  
 
 ```--method``` tag
+
+```simple```
+our approach for the competition. Use --checkpoint_path to specify the path to the trained model checkpoint. 
 
 ```nnint```
 based on the [nnInteractive](https://github.com/MIC-DKFZ/nnInteractive) framework. It uses a pre-trained nnUNet model as the backbone and implements the interactive segmentation process using bounding boxes and clicks.
