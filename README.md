@@ -24,7 +24,7 @@ huggingface-cli download junma/CVPR-BiomedSegFM --repo-type dataset
 python scripts/train.py
 ```
 
-## Local evaluation Script
+## Evaluating the model locally
 
 ```python
 scripts/eval.py 
@@ -41,7 +41,7 @@ python scripts/eval.py -ca 1 -cl 1 -ncm 1 --no_wandb
 
 
 
-## Methods  
+### Methods  
 
 One can specify the method used by the eval script using the```--method``` tag :
 
@@ -57,7 +57,8 @@ a simplified version of nnint, using the backbone only, without zoom-in and zoom
 ```sammed3d```
 based on the [SAM-Med3D](https://github.com/uni-medical/SAM-Med3D), which is a 3D extension of the Segment Anything Model (SAM). It uses the SAM model as the backbone and implements the interactive segmentation process using bounding boxes and clicks.
 
-## Submission
+## Building and evaluating a container image
+
 The official evaluation script is designed to run in a Docker container. If you don't have Docker installed, you can use Singularity as an alternative (see below).
 
 ### Using Docker : 
