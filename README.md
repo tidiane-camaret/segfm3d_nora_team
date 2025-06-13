@@ -160,3 +160,19 @@ singularity build sam-med3d.sif docker://sam-med3d:latest
 # Save the Docker image to a tar file
 singularity save sam-med3d.sif -o sam-med3d.tar
 ```
+
+
+## Citation
+When using our work, please cite the following paper:
+```
+@inproceedings{
+ndir2025dynamic,
+title={Dynamic Prompt Generation for Interactive 3D Medical Image Segmentation},
+author={Tidiane Camaret Ndir and Alexander Pfefferle and Robin Tibor Schirrmeister},
+booktitle={Submitted to CVPR 2025: Foundation Models for 3D Biomedical Image Segmentation},
+year={2025},
+url={https://openreview.net/forum?id=EnSf2D1blH},
+note={under review}
+}
+```
+Link: https://openreview.net/forum?id=EnSf2D1blH&noteId=EnSf2D1blH
