@@ -2,6 +2,10 @@
 
 Repository for our participation in the Interactive 3D Segmentation Challenge (CVPR 2025: Foundation Models for Interactive 3D Biomedical Image Segmentation).
 
+Paper: [Dynamic Prompt Generation for Interactive 3D Medical Image Segmentation](https://openreview.net/forum?id=EnSf2D1blH&noteId=EnSf2D1blH)
+
+Docker image: [norateam:latest](https://drive.google.com/file/d/1c9DaMTI6G61AbQ7JExGebOwCO4oSJ8fK/view)
+
 ## Requirements
 ```bash
 # Create a conda environment
@@ -12,7 +16,7 @@ pip install torch nnunetv2 monai wandb scikit-image scikit-learn matplotlib open
 ```
 
 ## Dowloading the data
-It is now possible to download the competition data using the huggingface-cli package :
+It is now possible to download the challenge data using the huggingface-cli package :
 
 ```bash
 huggingface-cli download junma/CVPR-BiomedSegFM --repo-type dataset
@@ -29,7 +33,7 @@ python scripts/train.py
 ```python
 scripts/eval.py 
 ```
-This command runs the evaluation protocol locally, mimicking the competition's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
+This command runs the evaluation protocol locally, mimicking the challenge's iterative refinement process (bounding box + clicks). [See original script](https://github.com/JunMa11/CVPR-MedSegFMCompetition/blob/main/CVPR25_iter_eval.py)
 
 **Fast Evaluation for Debugging:**
 
@@ -46,7 +50,7 @@ python scripts/eval.py -ca 1 -cl 1 -ncm 1 --no_wandb
 One can specify the method used by the eval script using the```--method``` tag :
 
 ```simple```
-our approach for the competition. Use --checkpoint_path to specify the path to the trained model checkpoint. 
+our approach for the challenge. Use --checkpoint_path to specify the path to the trained model checkpoint. 
 
 ```nnint```
 based on the [nnInteractive](https://github.com/MIC-DKFZ/nnInteractive) framework. It uses a pre-trained nnUNet model as the backbone and implements the interactive segmentation process using bounding boxes and clicks.
@@ -84,7 +88,7 @@ docker save norateam:latest | gzip > docker/images/eval/norateam.tar.gz
 ### Evaluating the image using the official script 
 
 
-# with competition data
+# with challenge data
 python /nfs/norasys/notebooks/camaret/cvpr25/CVPR-MedSegFMCompetition/CVPR25_iter_eval.py --docker_folder /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker/images/eval --test_img_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_npz --save_path /nfs/norasys/notebooks/camaret/segfm3d_nora_team/docker/submission/data/outputs --validation_gts_path /nfs/norasys/notebooks/camaret/cvpr25/data/3D_val_gt/3D_val_gt_interactive --verbose
 
 
