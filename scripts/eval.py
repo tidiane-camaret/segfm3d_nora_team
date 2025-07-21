@@ -15,7 +15,7 @@ from src.config import config
 
 import traceback
 from collections import OrderedDict
-
+import gc
 import cc3d
 import numpy as np
 import torch
@@ -30,6 +30,13 @@ from src.eval_metrics import (  # TODO : Use the competition repo as source inst
 from tqdm import tqdm
 
 random.seed(42)
+
+def clear_gpu_memory():
+    """Clear GPU memory and run garbage collection"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    gc.collect()
 
 
 def evaluate(
@@ -48,6 +55,8 @@ def evaluate(
     add_previous_clicks=True,  # used in nnint_custom
 ):
     torch.set_grad_enabled(False)  # Disable gradient calculation for inference
+    clear_gpu_memory()
+
     if save_segs:
         print(
             "Warning: Saving segmentations is enabled. Will take more time and space."
@@ -146,7 +155,7 @@ def evaluate(
         raise ValueError(f"Unknown method: {method}.")
 
     ### List cases (npz files) ###
-    output_dir = os.path.join(output_dir, method)
+    output_dir = os.path.join(output_dir, "post_challenge") #method)
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
 
@@ -154,8 +163,7 @@ def evaluate(
     remaining_cases = sorted(list(set(cases) - set(processed_cases)))
 
     cases = remaining_cases
-
-    #cases = random.shuffle(cases)  # shuffle cases for reproducibility
+    random.Random(42).shuffle(cases)  # Shuffle cases for random evaluation order
     cases = cases[:n_cases] if n_cases > 0 else cases  # limit number of cases to evaluate
 
 
@@ -228,16 +236,13 @@ def evaluate(
 
             segs = np.zeros_like(gts, dtype=np.uint8)  # Initialize with zeros
 
-            if np.any(np.array(image.shape) > 1000):
+            if np.prod(image.shape) > 1E8:
                 print(
-                    f"Warning: One of the dims is > 1000 for {case_name}. shape : {image.shape}. Skipping because of memory constraints. Seg segs = 0"
+                    f"Warning: nb of voxels is > 1E8 for {case_name}. shape : {image.shape}. Skipping because of memory constraints. Seg segs = 0"
                 )
-                if save_segs:
-                    np.savez_compressed(
-                        os.path.join(output_dir, case_name),
-                        segs=segs,
-                        all_segs=[segs],  # store all intermediate predictions
-                    )
+
+                continue
+
 
 
             ### Initialize interaction objects and metrics ###
