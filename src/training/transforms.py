@@ -1,4 +1,6 @@
+import random
 from typing import Union, List, Tuple
+import os
 import numpy as np
 import torch
 from batchgenerators.transforms.abstract_transforms import AbstractTransform
@@ -273,16 +275,16 @@ def crop_to_nonzero_image(image, segmentation):
 
 
 class CropToNonzeroImage:
-    def __call__(self, image, segmentation):
+    def __call__(self, image, segmentation, filepath):
         image, segmentation, _ = crop_to_nonzero_image(image, segmentation)
-        return dict(image=image, segmentation=segmentation)
+        return dict(image=image, segmentation=segmentation, filepath=filepath)
 
 
 class ChooseClass:
     def __init__(self, fixed_class=None):
         self.fixed_class = fixed_class
 
-    def __call__(self, image, segmentation):
+    def __call__(self, image, segmentation, filepath):
         if np.max(segmentation) > 0:
             if self.fixed_class is None:
                 uniq_classes = [c for c in np.unique(segmentation) if c != 0]
@@ -292,7 +294,7 @@ class ChooseClass:
             segmentation = segmentation == wanted_class_idx
         else:
             segmentation = segmentation.astype(bool)
-        return dict(image=image, segmentation=segmentation)
+        return dict(image=image, segmentation=segmentation, filepath=filepath)
 
 
 class AddEmptyChan:
@@ -385,34 +387,61 @@ def crop_and_add_bbox(image, bbox, segmentation, patch_sizes):
 
 
 class CropAndAddBBox:
-    def __call__(self, image, segmentation):
+    """
+    Check if orginal case contains a bounding box prompt
+    If bbox prompt :
+        we do not actually use the bbox prompt, but compute a bbox from the segmentation mask
+        and crop the image to that bbox.
+    If no bbox prompt :
+        we use the full image and
+    """
+    def __call__(self, image, segmentation, filepath):
         assert segmentation.dtype == bool
         patch_sizes = np.array([192, 192, 192])
-        if np.any(segmentation):
-            bbox_dict = mask3D_to_bbox(segmentation)
+        filename = os.path.basename(filepath)
+        modality = filename[:2]
+        no_bbox_prompt = modality == "MR" and random.random() < 0.6
+        if np.any(segmentation): # if segmentation is not empty (should be the case 99% of the time)
+            if no_bbox_prompt:
+                print("WARNING: NOT USING BBOX, CROPPING TO NONZERO IMAGE AND ADDING EMPTY BBOX CHANNEL")
+                # no bbox prompt, so just crop to nonzero image
+                padded_img, padded_seg, _ = crop_to_nonzero_image(image, segmentation)
+                padded_bbox_chan = np.zeros_like(padded_img).astype(bool)
 
-            # make into simpler 3 x 2 (dims x start/stop) numpy array for later calculations
-            bbox = np.array(
-                [
+            else:
+                # do not actually use the bbox prompt, but compute a bbox from the segmentation mask
+                #print("WARNING: USING BOX : BOX AROUND GT FOR CROPPING AND BBOX CHANNEL")
+
+
+                bbox_dict = mask3D_to_bbox(segmentation)
+
+                # make into simpler 3 x 2 (dims x start/stop) numpy array for later calculations
+                bbox = np.array(
                     [
-                        bbox_dict["z_min"],
-                        bbox_dict["z_max"],
-                    ],
-                    [
-                        bbox_dict["z_mid_y_min"],
-                        bbox_dict["z_mid_y_max"],
-                    ],
-                    [
-                        bbox_dict["z_mid_x_min"],
-                        bbox_dict["z_mid_x_max"],
-                    ],
-                ]
-            )
-            image_seg_bbox = crop_and_add_bbox(image, bbox, segmentation, patch_sizes)
-            padded_img = image_seg_bbox["image"]
-            padded_seg = image_seg_bbox["segmentation"]
-            padded_bbox_chan = image_seg_bbox["bbox_chan"]
+                        [
+                            bbox_dict["z_min"],
+                            bbox_dict["z_max"],
+                        ],
+                        [
+                            bbox_dict["z_mid_y_min"],
+                            bbox_dict["z_mid_y_max"],
+                        ],
+                        [
+                            bbox_dict["z_mid_x_min"],
+                            bbox_dict["z_mid_x_max"],
+                        ],
+                    ]
+                )
+                image_seg_bbox = crop_and_add_bbox(image, bbox, segmentation, patch_sizes)
+                padded_img = image_seg_bbox["image"]
+                padded_seg = image_seg_bbox["segmentation"]
+                padded_bbox_chan = image_seg_bbox["bbox_chan"]
+
+
+
         else:
+            print("WARNING: NO SEGMENTATION MASK FOUND, USING CENTER CROP")
+            # no segmentation mask,
             # let's just do center crop of empty image
             n_pad = np.clip(patch_sizes - np.array(image.shape), a_min=0, a_max=None)
             n_pad_before = n_pad // 2

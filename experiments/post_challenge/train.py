@@ -156,8 +156,10 @@ optim_network = torch.optim.AdamW(
 
 import shutil
 from copy import deepcopy
+from datetime import datetime
 
-out_dir = os.path.join(config["RESULTS_DIR"], "postchallenge_segfm3d_nora_team")
+out_dir = os.path.join(config["RESULTS_DIR"], f"postchallengemodel_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+
 try:
     shutil.copytree(orig_checkpoint_dir, out_dir)
 except FileExistsError:
@@ -230,8 +232,9 @@ for i_epoch in trange(n_epochs):
                 else (moving_dsc * 0.98 + mean_dsc * 0.02)
             )
         pbar.set_postfix(dict(moving_dsc=moving_dsc.item()))
-        print(mean_dsc.item())
-        print(cent.item())
+        print("mean dsc : ", mean_dsc.item())
+        print("cross entropy : ", cent.item())
+
         print()
     print("mean dsc", np.nanmean(epoch_mean_dscs))
     all_mean_dscs.extend(epoch_mean_dscs)

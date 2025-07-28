@@ -153,21 +153,31 @@ def evaluate(
         predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=1)
         
     elif method == "post_challenge":
-        from src.method import PostChallenge_Predictor
+        import sys
+        sys.path.append("/nfs/norasys/notebooks/camaret/segfm3d_nora_team/experiments/post_challenge")
+        from postchallenge_method import SimplePredictor
         trained_checkpoint_path = checkpoint_path
-        predictor = PostChallenge_Predictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=1)
+        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=1)
     else:
         raise ValueError(f"Unknown method: {method}.")
 
     ### List cases (npz files) ###
-    output_dir = os.path.join(output_dir, "post_challenge") #method)
+    from datetime import datetime
+
+    output_dir = os.path.join(output_dir, f"postchallenge_{datetime.now().strftime('%Y%m%d_%H%M%S')}") #method)
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
 
-    processed_cases = sorted([f for f in os.listdir(output_dir) if f.endswith(".npz")])
-    remaining_cases = sorted(list(set(cases) - set(processed_cases)))
+    statistics_df_path = os.path.join("/nfs/norasys/notebooks/camaret/segfm3d_nora_team/experiments/post_challenge", "norateam_metrics_with_bbox.csv")
+    if os.path.exists(statistics_df_path):
+        statistics_df = pd.read_csv(statistics_df_path)
+        fast_cases = statistics_df[statistics_df["TotalRunningTime"] < 15]["CaseName"].tolist()
+        # Add .npz extension if not present
+        fast_cases = [f"{case}.npz" if not case.endswith(".npz") else case for case in fast_cases]
+        cases = [case for case in cases if case in fast_cases]
+        print(f"Filtered to {len(cases)} cases with TotalRunningTime < 15")
 
-    cases = remaining_cases
+
     random.Random(42).shuffle(cases)  # Shuffle cases for random evaluation order
     cases = cases[:n_cases] if n_cases > 0 else cases  # limit number of cases to evaluate
 

@@ -209,7 +209,7 @@ class NPZNoCacheDataset(torch.utils.data.Dataset):
         filepath = self.files[idx]
         img_and_seg  = self.load_file(filepath)
         if self.transform is not None:
-            img_and_seg = self.transform(**img_and_seg)
+            img_and_seg = self.transform(**img_and_seg, filepath=filepath)
         return dict(**img_and_seg, filepath=filepath)
 
     @staticmethod
