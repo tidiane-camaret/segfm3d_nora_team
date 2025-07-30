@@ -29,3 +29,6 @@ __pycache__
 config.yaml
 cufile.log
 /lightning_logs
+
+/inputs
+/outputs

@@ -14,7 +14,6 @@ from src.training.transforms import (
     crop_and_add_bbox,
     get_nonzero_bbox,
 )
-
 def compute_background_log_prob(logits):
     """
     Args:
@@ -36,6 +35,7 @@ class SimplePredictor:
     """
     Predictor class using nnInteractive "as is".
     """
+    
 
     def __init__(self, checkpoint_path, device, include_previous_clicks, n_pred_iters):
         torch.set_grad_enabled(False)
@@ -45,7 +45,9 @@ class SimplePredictor:
         self.click_radius = 4
         assert n_pred_iters > 0
         self.n_pred_iters = n_pred_iters
-        print(f"Using {self.n_pred_iters} predictions...")
+
+        print(f"Using {self.n_pred_iters} predictions ...")
+        
 
     def init_network(self, checkpoint_path, device):
         args_for_network = {
@@ -124,7 +126,7 @@ class SimplePredictor:
         patch_sizes = np.array([192, 192, 192])
 
         all_preds = []
-
+        is_prompt_bbox = True
 
         nonzero_bbox = get_nonzero_bbox(image)
         nonzero_slicer = bbox_to_slicer(nonzero_bbox)
@@ -132,28 +134,99 @@ class SimplePredictor:
         normed_image = NormalizeSingleImageTransformNumpy()(image=nonzero_image)[
             "image"
         ].astype(np.float32)
+
+        n_classes = len(bboxs) if bboxs is not None else len(ordered_clicks_per_class)
+        click_iteration = len(ordered_clicks_per_class[0]) 
+
+        """
         if bboxs is None:
-            # make box in middle third of the image
+            # in case prompt bbox is not provided : 
+            # - bbox channel is set to all zeros
+            # - cropping bbox is set to nonzero_bbox
+            is_prompt_bbox = False
+            
             bboxs = [
+
                 dict(
-                    z_min=(2 * nonzero_bbox[0, 0] + nonzero_bbox[0, 1]) // 3,
-                    z_max=(nonzero_bbox[0, 0] + 2 * nonzero_bbox[0, 1]) // 3,
+                    z_min= nonzero_bbox[0, 0],
+                    z_max=nonzero_bbox[0, 1],
                     z_mid=(nonzero_bbox[0, 0] + nonzero_bbox[0, 1]) // 2,
-                    z_mid_y_min=(2 * nonzero_bbox[1, 0] + nonzero_bbox[1, 1]) // 3,
-                    z_mid_y_max=(nonzero_bbox[1, 0] + 2 * nonzero_bbox[1, 1]) // 3,
-                    z_mid_x_min=(2 * nonzero_bbox[2, 0] + nonzero_bbox[2, 1]) // 3,
-                    z_mid_x_max=(nonzero_bbox[2, 0] + 2 * nonzero_bbox[2, 1]) // 3,
+                    z_mid_y_min=nonzero_bbox[1, 0],
+                    z_mid_y_max=nonzero_bbox[1, 1],
+                    z_mid_x_min=nonzero_bbox[2, 0],
+                    z_mid_x_max=nonzero_bbox[2, 1],
                 )
+                for _ in range(n_classes)
             ]
 
-        n_classes = len(bboxs)
+        """
         if num_classes_max is not None:
             n_classes = min(n_classes, num_classes_max)
         for i_class in range(n_classes):
             try:
                 prev_seg = prev_pred == (i_class + 1)
                 nonzero_prev_seg = prev_seg[nonzero_slicer]
-                bbox_dict = bboxs[i_class]
+                extra_bbox_for_crop_in_nonzero = None
+                if bboxs is None:
+                # in case prompt bbox is not provided : 
+                # - bbox channel is set to all zeros
+                # - cropping bbox is set to nonzero_bbox
+                    is_prompt_bbox = False
+                    positive_clicks = clicks[0][i_class]["fg"]
+                    if len(positive_clicks) >0:
+                        # calculate bbox from positive clicks
+                        # Convert clicks to numpy array for easier computation
+                        positive_clicks_array = np.array(positive_clicks)
+                        
+                        # Calculate barycenter (center of mass) of positive clicks
+                        barycenter = np.mean(positive_clicks_array, axis=0)
+                        
+                        # Calculate the span of clicks in each dimension
+                        click_mins = np.min(positive_clicks_array, axis=0)
+                        click_maxs = np.max(positive_clicks_array, axis=0)
+                        click_spans = click_maxs - click_mins
+                        
+                        # Add padding to ensure all clicks are well within the bbox
+                        padding_factor = 1.5  # 50% padding on each side
+                        bbox_half_sizes = click_spans * padding_factor / 2
+                        
+                        # Ensure minimum bbox size 
+                        min_bbox_size = np.array([96, 96, 96])
+                        bbox_half_sizes = np.maximum(bbox_half_sizes, min_bbox_size / 2)
+                        
+                        # Create bbox centered on barycenter
+                        bbox_dict = {
+                            'z_min': int(max(nonzero_bbox[0, 0], barycenter[0] - bbox_half_sizes[0])),
+                            'z_max': int(min(nonzero_bbox[0, 1], barycenter[0] + bbox_half_sizes[0])),
+                            'z_mid_y_min': int(max(nonzero_bbox[1, 0], barycenter[1] - bbox_half_sizes[1])),
+                            'z_mid_y_max': int(min(nonzero_bbox[1, 1], barycenter[1] + bbox_half_sizes[1])),
+                            'z_mid_x_min': int(max(nonzero_bbox[2, 0], barycenter[2] - bbox_half_sizes[2])),
+                            'z_mid_x_max': int(min(nonzero_bbox[2, 1], barycenter[2] + bbox_half_sizes[2])),
+                        }
+                    else:
+                        # if no positive clicks, use nonzero bbox
+                        bbox_dict = dict(
+                            z_min= nonzero_bbox[0, 0],
+                            z_max=nonzero_bbox[0, 1],
+                            z_mid_y_min=nonzero_bbox[1, 0],
+                            z_mid_y_max=nonzero_bbox[1, 1],
+                            z_mid_x_min=nonzero_bbox[2, 0],
+                            z_mid_x_max=nonzero_bbox[2, 1],
+                        )
+
+                    # use the calculated bbox for cropping and bbox channel
+                    extra_bbox_for_crop_in_nonzero = np.array(
+                        [
+                            [bbox_dict["z_min"], bbox_dict["z_max"]],
+                            [bbox_dict["z_mid_y_min"], bbox_dict["z_mid_y_max"]],
+                            [bbox_dict["z_mid_x_min"], bbox_dict["z_mid_x_max"]],
+                        ]
+                    )
+                else:
+                    # use the provided bbox prompt for cropping and bbox channel
+
+                    bbox_dict = bboxs[i_class]
+                
                 class_bbox = np.array(
                     [
                         [bbox_dict["z_min"], bbox_dict["z_max"]],
@@ -165,6 +238,7 @@ class SimplePredictor:
                 class_bbox_in_nonzero = class_bbox - nonzero_bbox[:, 0:1]
 
                 all_clicks_this_class = ordered_clicks_per_class[i_class]
+                
 
                 (
                     net_pred,
@@ -178,7 +252,8 @@ class SimplePredictor:
                     nonzero_prev_seg=nonzero_prev_seg,
                     patch_sizes=patch_sizes,
                     all_clicks_this_class=all_clicks_this_class,
-                    extra_bbox_for_crop_in_nonzero=None,
+                    extra_bbox_for_crop_in_nonzero=extra_bbox_for_crop_in_nonzero,
+                    is_bbox_prompt=is_prompt_bbox,
                 )
                 
 
@@ -218,7 +293,8 @@ class SimplePredictor:
                         nonzero_prev_seg=nonzero_prev_seg,
                         patch_sizes=patch_sizes,
                         all_clicks_this_class=all_clicks_this_class,
-                        extra_bbox_for_crop_in_nonzero=None,
+                        extra_bbox_for_crop_in_nonzero=extra_bbox_for_crop_in_nonzero,
+                        is_bbox_prompt=is_prompt_bbox,
                     )
                     forward_pass_count += 1
                     # _ = net_pred.cpu().numpy() # just for time checking
@@ -282,6 +358,7 @@ class SimplePredictor:
         patch_sizes,
         all_clicks_this_class,
         extra_bbox_for_crop_in_nonzero,
+        is_bbox_prompt=True,
     ):
         device = self.device
 
@@ -290,10 +367,7 @@ class SimplePredictor:
         # "image" and "segmentation"
         start_time_crop_scaled_bbox = time.time()
 
-        if extra_bbox_for_crop_in_nonzero is None:
-            bbox_for_crop = class_bbox_in_nonzero
-        else:
-            bbox_for_crop = extra_bbox_for_crop_in_nonzero
+        bbox_for_crop = class_bbox_in_nonzero if extra_bbox_for_crop_in_nonzero is None else extra_bbox_for_crop_in_nonzero
 
         cropped_im_and_scaled_bbox = crop_and_add_bbox(
             image=normed_image,
@@ -301,13 +375,15 @@ class SimplePredictor:
             segmentation=nonzero_prev_seg,
             patch_sizes=patch_sizes,
         )
+        
         if extra_bbox_for_crop_in_nonzero is None:
             class_cropped_bbox_chan = cropped_im_and_scaled_bbox["bbox_chan"]
-        else:  # now bbox may be at arbitrary position
-            # so we just will push the chan through
+        else:  
+            # the post challenge model is trained with an empty bbox channel when no bbox is provided
+            # so we also provide an empty bbox channel during inference in this case
             nonzero_bbox_chan = np.zeros(normed_image.shape, dtype=bool)
-            # fill bbox
-            nonzero_bbox_chan[bbox_to_slicer(class_bbox_in_nonzero)] = 1
+            if is_bbox_prompt: # fill bbox channel only if bbox is provided
+                nonzero_bbox_chan[bbox_to_slicer(class_bbox_in_nonzero)] = 1
             class_cropped_bbox_chan = crop_and_add_bbox(
                 image=normed_image,
                 bbox=bbox_for_crop,
