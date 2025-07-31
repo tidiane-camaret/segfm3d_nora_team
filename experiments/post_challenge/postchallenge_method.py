@@ -43,16 +43,14 @@ class SimplePredictor:
     """
     
 
-    def __init__(self, checkpoint_path, device, include_previous_clicks, n_pred_iters):
+    def __init__(self, checkpoint_path, device, include_previous_clicks):
         torch.set_grad_enabled(False)
         self.init_network(checkpoint_path, device)
         self.include_previous_clicks = include_previous_clicks
         self.device = torch.device(device)
         self.click_radius = 4
-        assert n_pred_iters > 0
-        self.n_pred_iters = n_pred_iters
 
-        print(f"Using {self.n_pred_iters} predictions ...")
+
         
 
     def init_network(self, checkpoint_path, device):
@@ -130,6 +128,7 @@ class SimplePredictor:
             # assert len(this_clicks["fg"]) == 0
 
         patch_sizes = np.array([192, 192, 192])
+        min_bbox_size = np.array([96, 96, 96])  # in case of no bbox prompt
 
         all_preds = []
         is_prompt_bbox = True
@@ -142,30 +141,15 @@ class SimplePredictor:
         ].astype(np.float32)
 
         n_classes = len(bboxs) if bboxs is not None else len(ordered_clicks_per_class)
-        click_iteration = len(ordered_clicks_per_class[0]) 
 
-        """
-        if bboxs is None:
-            # in case prompt bbox is not provided : 
-            # - bbox channel is set to all zeros
-            # - cropping bbox is set to nonzero_bbox
-            is_prompt_bbox = False
-            
-            bboxs = [
 
-                dict(
-                    z_min= nonzero_bbox[0, 0],
-                    z_max=nonzero_bbox[0, 1],
-                    z_mid=(nonzero_bbox[0, 0] + nonzero_bbox[0, 1]) // 2,
-                    z_mid_y_min=nonzero_bbox[1, 0],
-                    z_mid_y_max=nonzero_bbox[1, 1],
-                    z_mid_x_min=nonzero_bbox[2, 0],
-                    z_mid_x_max=nonzero_bbox[2, 1],
-                )
-                for _ in range(n_classes)
-            ]
+        bboxs_from_clicks = [] # when creating bboxs from clicks, debugging purposes
+        
+        #n_pred_iters = 2 if (len(ordered_clicks_per_class[0]) == 0) and (bboxs is not None) else 1
+        n_pred_iters = 1 
+        print(f"Using {n_pred_iters} predictions ...")
 
-        """
+
         if num_classes_max is not None:
             n_classes = min(n_classes, num_classes_max)
         for i_class in range(n_classes):
@@ -197,17 +181,15 @@ class SimplePredictor:
                         bbox_half_sizes = click_spans * padding_factor / 2
                         
                         # Ensure minimum bbox size 
-                        min_bbox_size = np.array([96, 96, 96])
                         bbox_half_sizes = np.maximum(bbox_half_sizes, min_bbox_size / 2)
                         
-                        # Create bbox centered on barycenter
                         bbox_dict = {
-                            'z_min': int(max(nonzero_bbox[0, 0], barycenter[0] - bbox_half_sizes[0])),
-                            'z_max': int(min(nonzero_bbox[0, 1], barycenter[0] + bbox_half_sizes[0])),
-                            'z_mid_y_min': int(max(nonzero_bbox[1, 0], barycenter[1] - bbox_half_sizes[1])),
-                            'z_mid_y_max': int(min(nonzero_bbox[1, 1], barycenter[1] + bbox_half_sizes[1])),
-                            'z_mid_x_min': int(max(nonzero_bbox[2, 0], barycenter[2] - bbox_half_sizes[2])),
-                            'z_mid_x_max': int(min(nonzero_bbox[2, 1], barycenter[2] + bbox_half_sizes[2])),
+                            'z_min': int(barycenter[0] - bbox_half_sizes[0]),
+                            'z_max': int(barycenter[0] + bbox_half_sizes[0]),
+                            'z_mid_y_min': int(barycenter[1] - bbox_half_sizes[1]),
+                            'z_mid_y_max': int(barycenter[1] + bbox_half_sizes[1]),
+                            'z_mid_x_min': int(barycenter[2] - bbox_half_sizes[2]),
+                            'z_mid_x_max': int(barycenter[2] + bbox_half_sizes[2]),
                         }
                     else:
                         # if no positive clicks, use nonzero bbox
@@ -228,6 +210,8 @@ class SimplePredictor:
                             [bbox_dict["z_mid_x_min"], bbox_dict["z_mid_x_max"]],
                         ]
                     )
+
+                    bboxs_from_clicks.append(bbox_dict)
                 else:
                     # use the provided bbox prompt for cropping and bbox channel
 
@@ -282,7 +266,7 @@ class SimplePredictor:
                     empty_cache(torch.device("cuda", 0))
                 gc.collect()
                 # you could make a loop here if you want
-                for _ in range(1, self.n_pred_iters):
+                for _ in range(1, n_pred_iters):
                     nonzero_prev_seg = (np.diff(pasted_pred.cpu().numpy(), axis=0) > 0).squeeze(0)[
                         nonzero_slicer
                     ]
@@ -339,7 +323,7 @@ class SimplePredictor:
             torch.diff(torch.stack(all_preds), axis=1)[:, 0], -torch.inf
         )
         bg_log_prob_1 = compute_background_log_prob(logits_per_class)
-        logits_with_background = torch.cat((bg_log_prob_1[None], logits_per_class))
+        logits_with_background = torch.cat((bg_log_prob_1[None], torch.nn.functional.logsigmoid(logits_per_class)))
         full_seg = logits_with_background.argmax(dim=0).cpu().numpy()
 
         total_time = time.time() - start_time
@@ -351,6 +335,8 @@ class SimplePredictor:
         prediction_metrics = {
             "infer_time": total_time,
             "forward_pass_count": forward_pass_count,
+            "bboxs_from_clicks": bboxs_from_clicks,
+            "nonzero_bbox": nonzero_bbox,
         }
         return full_seg, prediction_metrics
 

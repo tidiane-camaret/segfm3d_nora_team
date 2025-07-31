@@ -150,14 +150,14 @@ def evaluate(
     elif method == "simple":
         from src.method import SimplePredictor
         trained_checkpoint_path = checkpoint_path
-        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=1)
+        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True)
         
     elif method == "post_challenge":
         import sys
         sys.path.append("/nfs/norasys/notebooks/camaret/segfm3d_nora_team/experiments/post_challenge")
         from postchallenge_method import SimplePredictor
         trained_checkpoint_path = checkpoint_path
-        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True, n_pred_iters=1)
+        predictor = SimplePredictor(trained_checkpoint_path, device="cuda", include_previous_clicks=True)
     else:
         raise ValueError(f"Unknown method: {method}.")
 
@@ -168,15 +168,16 @@ def evaluate(
     
     cases = sorted([f for f in os.listdir(img_dir) if f.endswith(".npz")])
 
-    statistics_df_path = os.path.join("/nfs/norasys/notebooks/camaret/segfm3d_nora_team/experiments/post_challenge", "norateam_metrics_with_bbox.csv")
+    """"
+    statistics_df_path = os.path.join("/nfs/norasys/notebooks/camaret/segfm3d_nora_team/experiments/post_challenge", "stats_by_case.csv")
     if os.path.exists(statistics_df_path):
         statistics_df = pd.read_csv(statistics_df_path)
-        fast_cases = statistics_df[statistics_df["TotalRunningTime"] < 15]["CaseName"].tolist()
+        filtered_cases = statistics_df[~statistics_df["has_bbox"]]["CaseName"].tolist()
         # Add .npz extension if not present
-        fast_cases = [f"{case}.npz" if not case.endswith(".npz") else case for case in fast_cases]
-        cases = [case for case in cases if case in fast_cases]
-        print(f"Filtered to {len(cases)} cases with TotalRunningTime < 15")
-
+        filtered_cases = [f"{case}.npz" if not case.endswith(".npz") else case for case in filtered_cases]
+        cases = [case for case in cases if case in filtered_cases]
+        print(f"Filtered to {len(cases)} cases ")
+    """
 
     random.Random(42).shuffle(cases)  # Shuffle cases for random evaluation order
     cases = cases[:n_cases] if n_cases > 0 else cases  # limit number of cases to evaluate

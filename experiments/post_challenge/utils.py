@@ -3,7 +3,7 @@ from turtle import color
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 
-def draw_pred_contours(image, gts, segs, boxes, class_idx_list, clicks_cls=None):
+def draw_pred_contours(image, gts, segs, boxes, class_idx_list, clicks_cls=None, bboxs_from_clicks=None):
     # Handle single class_idx for backward compatibility
     if isinstance(class_idx_list, int):
         class_idx_list = [class_idx_list]
@@ -66,6 +66,19 @@ def draw_pred_contours(image, gts, segs, boxes, class_idx_list, clicks_cls=None)
                 label_bg = 'bg click' if not bg_labeled else None
                 ax.plot(c[2], c[1], 'bo', markersize=5, label=label_bg, color='purple')
                 bg_labeled = True
+        
+        if bboxs_from_clicks is not None and len(bboxs_from_clicks) >= class_idx:	
+            bbox = bboxs_from_clicks[class_idx - 1]
+            # Convert 3D coordinates to 2D for display
+            y_min = bbox["z_mid_y_min"]
+            y_max = bbox["z_mid_y_max"]
+            x_min = bbox["z_mid_x_min"]
+            x_max = bbox["z_mid_x_max"]
+            
+            rect_clicks = patches.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min,
+                                            linewidth=2, edgecolor='orange', facecolor='none',
+                                            linestyle='--', label='BBox from Clicks')
+            ax.add_patch(rect_clicks)
         
         ax.set_title(f"Class {class_idx}: GT (Red) vs Pred (Blue) vs Box (Green)")
         ax.legend()
